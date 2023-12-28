@@ -131,6 +131,7 @@ func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSessi
 		}
 	}
 	sess.MarkMessage(msgs[len(msgs)-1].GetRaw(), "")
+	sess.Commit()
 	return nil
 }
 

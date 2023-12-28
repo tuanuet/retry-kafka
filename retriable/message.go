@@ -35,8 +35,14 @@ func (m *Message) GetTopicName() string {
 
 // GetHeaders gets header of msg
 func (m *Message) GetHeaders() []*Header {
-	// TODO: refactor here
-	return nil
+	headers := make([]*Header, 0)
+	for _, header := range m.msg.Headers {
+		headers = append(headers, &Header{
+			Key:   header.Key,
+			Value: header.Value,
+		})
+	}
+	return headers
 }
 
 // GetSinceTime gets the remain time of a message before retried.

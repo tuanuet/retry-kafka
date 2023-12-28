@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"github.com/tuanuet/retry-kafka/producer"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/tuanuet/retry-kafka/consumer"
-	"github.com/tuanuet/retry-kafka/producer"
 	"github.com/tuanuet/retry-kafka/retriable"
 )
 
@@ -55,16 +54,24 @@ func main() {
 	//	return errors.New("aaaa")
 	//})
 
-	err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
-		us := make([]*UserEvent, len(evts))
-		for _, evt := range evts {
-			u := evt.(*UserEvent)
-			fmt.Println(u.ID)
-			us = append(us, u)
-		}
-
-		return errors.New("aaaa")
+	err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
+		fmt.Println("===========================================================")
+		u := evt.(*UserEvent)
+		fmt.Println("===========================================================")
+		fmt.Println(u.ID)
+		return retriable.ErrorWithoutRetry
 	})
+
+	//err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
+	//	us := make([]*UserEvent, len(evts))
+	//	for _, evt := range evts {
+	//		u := evt.(*UserEvent)
+	//		fmt.Println(u.ID)
+	//		us = append(us, u)
+	//	}
+	//
+	//	return errors.New("aaaa")
+	//})
 	if err != nil {
 		panic(err)
 	}
