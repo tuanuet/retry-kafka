@@ -37,6 +37,13 @@ func WithMarshaler(mr marshaler.Marshaler) Option {
 	}
 }
 
+// WithRetries can overwrite retry want to send
+func WithRetries(opts []RetryOption) Option {
+	return func(k *kConsumer) {
+		k.retryConfigs = opts
+	}
+}
+
 type kConsumer struct {
 	subscriberName string
 

@@ -43,9 +43,14 @@ func (h kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, c
 		topic := h.subscriber.getTopic(newMsg.GetTopicName())
 		since := newMsg.GetSinceTime()
 
+		topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
 		if topic.Pending-since > time.Millisecond*100 {
+			// pause consume
+			h.subscriber.consumerGroup.Pause(topicPause)
 			time.Sleep(topic.Pending - since)
 		}
+
+		h.subscriber.consumerGroup.Resume(topicPause)
 		if err := h.handleMessage(newMsg); err != nil {
 			if ok := errors.Is(err, retriable.ErrorWithoutRetry); ok {
 				if err := h.subscriber.sendDQL(newMsg); err != nil {

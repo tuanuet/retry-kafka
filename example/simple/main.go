@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/tuanuet/retry-kafka/producer"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/tuanuet/retry-kafka/consumer"
 	"github.com/tuanuet/retry-kafka/retriable"
@@ -35,17 +37,19 @@ func (u UserEvent) GetPartitionValue() string {
 func main() {
 	publisher := producer.NewProducer(&UserEvent{}, []string{"localhost:9092"})
 
-	if err := publisher.SendMessage(&UserEvent{
-		User{
-			ID:   1,
-			Name: "tuan",
-			Age:  27,
-		},
-	}, nil); err != nil {
-		panic(err)
+	for i := 0; i < 10; i++ {
+		if err := publisher.SendMessage(&UserEvent{
+			User{
+				ID:   1,
+				Name: "tuan",
+				Age:  27,
+			},
+		}, nil); err != nil {
+			panic(err)
+		}
 	}
 
-	c := consumer.NewConsumer("test_consumer", &UserEvent{}, []string{"localhost:9092"})
+	c := consumer.NewConsumer("test_consumer", &UserEvent{}, []string{"localhost:9092"}, consumer.WithBatchFlush(2, 10*time.Second))
 
 	//err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
 	//	u := evt.(*UserEvent)
@@ -54,24 +58,24 @@ func main() {
 	//	return errors.New("aaaa")
 	//})
 
-	err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
-		fmt.Println("===========================================================")
-		u := evt.(*UserEvent)
-		fmt.Println("===========================================================")
-		fmt.Println(u.ID)
-		return retriable.ErrorWithoutRetry
-	})
-
-	//err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
-	//	us := make([]*UserEvent, len(evts))
-	//	for _, evt := range evts {
-	//		u := evt.(*UserEvent)
-	//		fmt.Println(u.ID)
-	//		us = append(us, u)
-	//	}
-	//
-	//	return errors.New("aaaa")
+	//err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
+	//	fmt.Println("===========================================================")
+	//	u := evt.(*UserEvent)
+	//	fmt.Println(u.ID)
+	//	return errors.New("errr")
 	//})
+
+	err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
+		fmt.Println("============================================")
+		us := make([]*UserEvent, len(evts))
+		for _, evt := range evts {
+			u := evt.(*UserEvent)
+			fmt.Println(u.ID)
+			us = append(us, u)
+		}
+
+		return errors.New("aaaa")
+	})
 	if err != nil {
 		panic(err)
 	}

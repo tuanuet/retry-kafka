@@ -88,10 +88,13 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 			newMsg := retriable.NewMessage(msg, h.subscriber.marshaler)
 			topic := h.subscriber.getTopic(newMsg.GetTopicName())
 			since := newMsg.GetSinceTime()
-
+			topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
 			if topic.Pending-since > time.Millisecond*100 {
+				h.subscriber.consumerGroup.Pause(topicPause)
 				time.Sleep(topic.Pending - since)
 			}
+
+			h.subscriber.consumerGroup.Resume(topicPause)
 			events = append(events, newMsg)
 
 			if len(events) >= int(batchSize) {
