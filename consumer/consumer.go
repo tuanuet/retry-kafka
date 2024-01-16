@@ -105,7 +105,7 @@ func NewConsumer(subscriberName string, event retriable.Event, brokers []string,
 	// Make retry-topic
 	if c.enableRetry {
 		for _, retryConfig := range c.retryConfigs {
-			topicName := fmt.Sprintf("%s_retry_%v", c.mainTopic.Name, retryConfig.Pending)
+			topicName := fmt.Sprintf("sub_%s_%s_retry_%v", c.subscriberName, c.mainTopic.Name, retryConfig.Pending)
 			topic := retriable.NewTopic(topicName, retriable.WithPending(retryConfig.Pending))
 			c.retryTopics = append(c.retryTopics, topic)
 			c.nameToTopics[topic.Name] = topic
@@ -121,7 +121,7 @@ func NewConsumer(subscriberName string, event retriable.Event, brokers []string,
 
 	// Make dql-topic
 	if c.enableDlq {
-		topicName := fmt.Sprintf("%s_dlq", c.mainTopic.Name)
+		topicName := fmt.Sprintf("sub_%s_%s_dlq", c.subscriberName, c.mainTopic.Name)
 		topic := retriable.NewTopic(topicName)
 		c.dlqTopic = topic
 		c.nameToTopics[topic.Name] = topic
