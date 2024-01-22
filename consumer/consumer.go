@@ -215,12 +215,5 @@ func (k *kConsumer) Close() error {
 	if err := k.consumerGroup.Close(); err != nil {
 		return err
 	}
-
-	// TODO: flush all message on RAM
-
-	// close publisher
-	if err := k.publisher.Close(); err != nil {
-		return err
-	}
 	return nil
 }

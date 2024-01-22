@@ -72,18 +72,15 @@ func (kafkaSubscriberBatchHandler) Cleanup(_ sarama.ConsumerGroupSession) error 
 func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	batchSize := h.batchSize
 	batchDuration := h.batchDuration
-	ticker := time.NewTicker(batchDuration)
 	events := make([]*retriable.Message, 0)
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-time.After(batchDuration):
 			// exec handler
 			if err := h.execMessages(sess, events); err != nil {
 				return err
 			}
-			// reset ticket
-			ticker.Reset(batchDuration)
 			events = make([]*retriable.Message, 0)
 		case msg := <-claim.Messages():
 			newMsg := retriable.NewMessage(msg, h.subscriber.marshaler)
@@ -97,7 +94,6 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 					return err
 				}
 				events = make([]*retriable.Message, 0)
-				ticker.Reset(batchDuration)
 
 				time.Sleep(topic.Pending - since)
 			}
@@ -111,11 +107,14 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 					return err
 				}
 				events = make([]*retriable.Message, 0)
-				ticker.Reset(batchDuration)
 				continue
 			}
 
 		case <-sess.Context().Done():
+			// exec handler
+			if err := h.execMessages(sess, events); err != nil {
+				return err
+			}
 			return nil
 		}
 	}
