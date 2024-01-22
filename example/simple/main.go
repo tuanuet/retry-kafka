@@ -37,7 +37,7 @@ func (u UserEvent) GetPartitionValue() string {
 func main() {
 	publisher := producer.NewProducer(&UserEvent{}, []string{"localhost:9092"})
 
-	for i := 0; i < 0; i++ {
+	for i := 0; i < 100; i++ {
 		if err := publisher.SendMessage(&UserEvent{
 			User{
 				ID:   uint32(i),
@@ -77,9 +77,10 @@ func main() {
 		err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
 			fmt.Println("============================================")
 			fmt.Println(len(evts))
-			us := make([]*UserEvent, 0)
-			for _, evt := range evts {
-				u := evt.(*UserEvent)
+			fmt.Println(len(evts))
+		us := make([]*UserEvent, 0)
+		for _, evt := range evts {
+			u := evt.(*UserEvent)
 				us = append(us, u)
 			}
 

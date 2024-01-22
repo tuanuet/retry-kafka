@@ -70,54 +70,61 @@ func (kafkaSubscriberBatchHandler) Cleanup(_ sarama.ConsumerGroupSession) error 
 
 // ConsumeClaim implements the method of interface.
 func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	eventChan := h.productBatch(sess, claim)
+
+	for events := range eventChan {
+		// flush message
+		if err := h.execMessages(sess, events); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h kafkaSubscriberBatchHandler) productBatch(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) chan []*retriable.Message {
+	eventChan := make(chan []*retriable.Message, 0)
 	batchSize := h.batchSize
 	batchDuration := h.batchDuration
 	events := make([]*retriable.Message, 0)
-
-	for {
-		select {
-		case <-time.After(batchDuration):
-			// exec handler
-			if err := h.execMessages(sess, events); err != nil {
-				return err
-			}
-			events = make([]*retriable.Message, 0)
-		case msg := <-claim.Messages():
-			newMsg := retriable.NewMessage(msg, h.subscriber.marshaler)
-			topic := h.subscriber.getTopic(newMsg.GetTopicName())
-			since := newMsg.GetSinceTime()
-			topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
-			if topic.Pending-since > time.Millisecond*100 {
-				h.subscriber.consumerGroup.Pause(topicPause)
-				// flush message
-				if err := h.execMessages(sess, events); err != nil {
-					return err
-				}
+	go func() {
+		defer close(eventChan)
+		for {
+			select {
+			case <-time.After(batchDuration):
+				eventChan <- events
 				events = make([]*retriable.Message, 0)
-
-				time.Sleep(topic.Pending - since)
-			}
-
-			h.subscriber.consumerGroup.Resume(topicPause)
-			events = append(events, newMsg)
-
-			if len(events) >= int(batchSize) {
-				// exec handler
-				if err := h.execMessages(sess, events); err != nil {
-					return err
+			case msg := <-claim.Messages():
+				newMsg := retriable.NewMessage(msg, h.subscriber.marshaler)
+				topic := h.subscriber.getTopic(newMsg.GetTopicName())
+				since := newMsg.GetSinceTime()
+				topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
+				if topic.Pending-since > time.Millisecond*200 {
+					h.subscriber.consumerGroup.Pause(topicPause)
+					// flush all message
+					eventChan <- events
+					events = make([]*retriable.Message, 0)
+					time.Sleep(topic.Pending - since)
 				}
-				events = make([]*retriable.Message, 0)
-				continue
-			}
 
-		case <-sess.Context().Done():
-			// exec handler
-			if err := h.execMessages(sess, events); err != nil {
-				return err
+				h.subscriber.consumerGroup.Resume(topicPause)
+				events = append(events, newMsg)
+
+				if len(events) >= int(batchSize) {
+					eventChan <- events
+					events = make([]*retriable.Message, 0)
+					continue
+				}
+
+			case <-sess.Context().Done():
+				eventChan <- events
+				events = make([]*retriable.Message, 0)
+				return
 			}
-			return nil
 		}
-	}
+	}()
+
+	return eventChan
 }
 
 func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSession, msgs []*retriable.Message) error {
@@ -125,6 +132,7 @@ func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSessi
 		return nil
 	}
 	if errs := h.handleMessages(msgs); errs != nil {
+
 		for i, msg := range msgs {
 			err := errs[i]
 			if err != nil {
