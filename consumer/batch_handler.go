@@ -74,6 +74,7 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 	batchDuration := h.batchDuration
 	ticker := time.NewTicker(batchDuration)
 	events := make([]*retriable.Message, 0)
+
 	for {
 		select {
 		case <-ticker.C:
@@ -91,6 +92,13 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 			topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
 			if topic.Pending-since > time.Millisecond*100 {
 				h.subscriber.consumerGroup.Pause(topicPause)
+				// flush message
+				if err := h.execMessages(sess, events); err != nil {
+					return err
+				}
+				events = make([]*retriable.Message, 0)
+				ticker.Reset(batchDuration)
+
 				time.Sleep(topic.Pending - since)
 			}
 
@@ -103,7 +111,6 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 					return err
 				}
 				events = make([]*retriable.Message, 0)
-				// reset ticket
 				ticker.Reset(batchDuration)
 				continue
 			}
