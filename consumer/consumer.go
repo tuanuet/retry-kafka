@@ -3,9 +3,10 @@ package consumer
 import (
 	"context"
 	"fmt"
-	"github.com/tuanuet/retry-kafka/marshaler"
 	"reflect"
 	"time"
+
+	"github.com/tuanuet/retry-kafka/marshaler"
 
 	"github.com/IBM/sarama"
 	"github.com/tuanuet/retry-kafka/producer"
@@ -41,6 +42,20 @@ func WithMarshaler(mr marshaler.Marshaler) Option {
 func WithRetries(opts []RetryOption) Option {
 	return func(k *kConsumer) {
 		k.retryConfigs = opts
+	}
+}
+
+// WithMaxProcessDuration ...
+func WithMaxProcessDuration(duration time.Duration) Option {
+	return func(opt *kConsumer) {
+		opt.conf.KafkaCfg.Consumer.MaxProcessingTime = duration
+	}
+}
+
+// WithBalanceStrategy ...
+func WithBalanceStrategy(balance sarama.BalanceStrategy) Option {
+	return func(opt *kConsumer) {
+		opt.conf.KafkaCfg.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{balance}
 	}
 }
 
@@ -86,7 +101,10 @@ func NewConsumer(subscriberName string, event retriable.Event, brokers []string,
 			{Pending: 10 * time.Minute},
 		},
 
-		conf:      config{Brokers: brokers, KafkaCfg: newConsumerKafkaConfig()},
+		conf: config{
+			Brokers:  brokers,
+			KafkaCfg: newConsumerKafkaConfig(),
+		},
 		marshaler: marshaler.DefaultMarshaler,
 	}
 
