@@ -2,7 +2,7 @@ package retriable
 
 import "github.com/IBM/sarama"
 
-var KafkaDefaultVersion = sarama.V2_6_0_0
+var KafkaDefaultVersion = sarama.V3_4_0_0
 
 // PublisherKafkaConfig is config of Kafka producer
 type PublisherKafkaConfig struct {

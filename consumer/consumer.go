@@ -66,6 +66,17 @@ func WithSessionTimeout(duration time.Duration) Option {
 	}
 }
 
+// WithKafkaVersion ...
+func WithKafkaVersion(version string) Option {
+	return func(opt *kConsumer) {
+		if ver, err := sarama.ParseKafkaVersion(version); err != nil {
+			sarama.Logger.Printf("error when parse kafka version: %v", err)
+		} else {
+			opt.conf.KafkaCfg.Version = ver
+		}
+	}
+}
+
 type kConsumer struct {
 	subscriberName string
 
@@ -169,6 +180,33 @@ func (k *kConsumer) Consume(ctx context.Context, handlerFunc HandleFunc) error {
 	handler := newKafkaSubscriberHandler(reflect.TypeOf(k.event), k, handlerFunc)
 
 	return k.consumerGroup.Consume(ctx, topicNames, handler)
+}
+
+// ShouldReBalance check member of group is not empty
+func (k *kConsumer) ShouldReBalance() (bool, error) {
+	admin, err := sarama.NewClusterAdmin(k.conf.Brokers, k.conf.KafkaCfg)
+	if err != nil {
+		return false, err
+	}
+
+	groups, err := admin.DescribeConsumerGroups([]string{k.subscriberName})
+	if err != nil {
+		return false, err
+	}
+
+	if len(groups) != 1 {
+		return false, fmt.Errorf("error when fetch groups is not single: %v", groups)
+	}
+	group := groups[0]
+	if group.Err != sarama.ErrNoError {
+		return false, group.Err
+	}
+
+	if len(group.Members) == 0 {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // BatchConsume is used to consume the batch messages.
