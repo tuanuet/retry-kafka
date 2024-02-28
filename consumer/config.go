@@ -17,7 +17,6 @@ type config struct {
 // newConsumerKafkaConfig is used to create config.
 func newConsumerKafkaConfig() *sarama.Config {
 	kafkaConfig := sarama.NewConfig()
-	kafkaConfig.ChannelBufferSize = 128 //reduce /2x from default of sarama lib
 	kafkaConfig.Version = retriable.KafkaDefaultVersion
 	sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 
@@ -30,7 +29,7 @@ func newConsumerKafkaConfig() *sarama.Config {
 	kafkaConfig.Consumer.Offsets.Retry.Max = 5
 	kafkaConfig.Consumer.Group.Session.Timeout = 30 * time.Second
 	kafkaConfig.Consumer.Group.Rebalance.Retry.Max = 10
-	kafkaConfig.Consumer.Group.Rebalance.Retry.Backoff = 5 * time.Second
+	kafkaConfig.Consumer.Group.Rebalance.Retry.Backoff = 10 * time.Second
 	kafkaConfig.Consumer.MaxProcessingTime = 5 * time.Second
 
 	return kafkaConfig

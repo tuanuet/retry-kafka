@@ -59,6 +59,13 @@ func WithBalanceStrategy(balance sarama.BalanceStrategy) Option {
 	}
 }
 
+// WithSessionTimeout ...
+func WithSessionTimeout(duration time.Duration) Option {
+	return func(opt *kConsumer) {
+		opt.conf.KafkaCfg.Consumer.Group.Session.Timeout = duration
+	}
+}
+
 type kConsumer struct {
 	subscriberName string
 
