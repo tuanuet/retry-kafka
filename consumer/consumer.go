@@ -17,6 +17,7 @@ import (
 type Consumer interface {
 	Consume(ctx context.Context, handlerFunc HandleFunc) error
 	BatchConsume(ctx context.Context, handlerFunc BatchHandleFunc) error
+	ShouldReBalance() (bool, error)
 	Close() error
 }
 
