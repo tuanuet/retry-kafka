@@ -21,6 +21,13 @@ func WithMarshaler(mr marshaler.Marshaler) Option {
 	}
 }
 
+// WithAsync can write to kafka by async publisher
+func WithAsync() Option {
+	return func(so *kProducer) {
+		so.async = true
+	}
+}
+
 type sendOption struct {
 	topic *retriable.Topic
 }
@@ -35,16 +42,22 @@ func WithTopic(t *retriable.Topic) SendOption {
 	}
 }
 
+type publisher interface {
+	Close() error
+	SendMessage(msg *sarama.ProducerMessage) error
+}
+
 type kProducer struct {
 	event    retriable.Event
 	topic    *retriable.Topic
+	async    bool
 	conf     config
-	producer sarama.SyncProducer
+	producer publisher
 
 	marshaler marshaler.Marshaler
 }
 
-// NewProducer initial kafka producer
+// NewProducer initial kafka publisher
 func NewProducer(event retriable.Event, brokers []string, options ...Option) *kProducer {
 	p := &kProducer{
 		event: event,
@@ -52,6 +65,7 @@ func NewProducer(event retriable.Event, brokers []string, options ...Option) *kP
 			Brokers:  brokers,
 			KafkaCfg: newProducerKafkaConfig(),
 		},
+		async: false,
 		topic: retriable.NewTopic(retriable.NormalizeMainTopicName(event)),
 		// default JSONMarshaler
 		marshaler: marshaler.DefaultMarshaler,
@@ -61,24 +75,18 @@ func NewProducer(event retriable.Event, brokers []string, options ...Option) *kP
 		opt(p)
 	}
 
-	producer, err := sarama.NewSyncProducer(brokers, p.conf.KafkaCfg)
-	if err != nil {
-		panic(err)
-	}
-
-	p.producer = producer
 	return p
 }
 
 // SendMessage ...
-func (p *kProducer) SendMessage(event retriable.Event, headers []*retriable.Header, opts ...SendOption) error {
-	body, err := p.marshaler.Marshal(event)
+func (k *kProducer) SendMessage(event retriable.Event, headers []*retriable.Header, opts ...SendOption) error {
+	body, err := k.marshaler.Marshal(event)
 	if err != nil {
 		panic(err)
 	}
 
 	so := &sendOption{
-		topic: p.topic,
+		topic: k.topic,
 	}
 
 	for _, opt := range opts {
@@ -104,8 +112,7 @@ func (p *kProducer) SendMessage(event retriable.Event, headers []*retriable.Head
 		}
 	}
 
-	_, _, err = p.producer.SendMessage(newMsg)
-	return err
+	return k.producer.SendMessage(newMsg)
 }
 
 // Close ...
@@ -115,4 +122,16 @@ func (k *kProducer) Close() error {
 	}
 
 	return nil
+}
+
+func (k *kProducer) initProducer() error {
+	if !k.async {
+		producer, err := newSyncPublisher(k.conf.Brokers, k.conf.KafkaCfg)
+		k.producer = producer
+		return err
+	}
+
+	producer, err := newAsyncPublisher(k.conf.Brokers, k.conf.KafkaCfg)
+	k.producer = producer
+	return err
 }
