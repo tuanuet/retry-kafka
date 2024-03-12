@@ -70,7 +70,7 @@ func (kafkaSubscriberBatchHandler) Cleanup(_ sarama.ConsumerGroupSession) error 
 
 // ConsumeClaim implements the method of interface.
 func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	eventChan := h.productBatch(sess, claim)
+	eventChan := h.produceEvents(sess, claim)
 
 	for events := range eventChan {
 		// flush message
@@ -82,7 +82,7 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 	return nil
 }
 
-func (h kafkaSubscriberBatchHandler) productBatch(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) chan []*retriable.Message {
+func (h kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) chan []*retriable.Message {
 	eventChan := make(chan []*retriable.Message, 0)
 	batchSize := h.batchSize
 	batchDuration := h.batchDuration
@@ -148,7 +148,7 @@ func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSessi
 		}
 	}
 	sess.MarkMessage(msgs[len(msgs)-1].GetRaw(), "")
-	sess.Commit()
+	//sess.Commit()
 	return nil
 }
 

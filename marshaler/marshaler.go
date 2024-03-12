@@ -5,7 +5,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Marshaler abtraction for marshal and unmarshal
+// Marshaler abstraction for marshal and unmarshal
 type Marshaler interface {
 	Marshal(v interface{}) ([]byte, error)
 	Unmarshal(data []byte, v interface{}) error

@@ -61,7 +61,7 @@ func (h kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, c
 			}
 		}
 		sess.MarkMessage(msg, "")
-		sess.Commit()
+		//sess.Commit()
 	}
 	return nil
 }

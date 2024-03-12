@@ -25,12 +25,13 @@ func newConsumerKafkaConfig() *sarama.Config {
 		sarama.NewBalanceStrategyRoundRobin(),
 	}
 	kafkaConfig.Consumer.Offsets.Initial = sarama.OffsetOldest
-	kafkaConfig.Consumer.Offsets.AutoCommit.Enable = false
+	kafkaConfig.Consumer.Offsets.AutoCommit.Enable = true
+	kafkaConfig.Consumer.Offsets.AutoCommit.Interval = 100 * time.Millisecond
 	kafkaConfig.Consumer.Offsets.Retry.Max = 5
 	kafkaConfig.Consumer.Group.Session.Timeout = 30 * time.Second
-	kafkaConfig.Consumer.Group.Rebalance.Retry.Max = 10
-	kafkaConfig.Consumer.Group.Rebalance.Retry.Backoff = 10 * time.Second
-	kafkaConfig.Consumer.MaxProcessingTime = 5 * time.Second
+	kafkaConfig.Consumer.Group.Rebalance.Retry.Max = 5
+	kafkaConfig.Consumer.Group.Rebalance.Retry.Backoff = 1 * time.Second
+	kafkaConfig.Consumer.MaxProcessingTime = 30 * time.Second
 
 	return kafkaConfig
 }
