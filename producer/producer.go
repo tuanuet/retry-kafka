@@ -65,7 +65,7 @@ func NewProducer(event retriable.Event, brokers []string, options ...Option) *kP
 		event: event,
 		conf: config{
 			Brokers:  brokers,
-			KafkaCfg: newProducerKafkaConfig(),
+			KafkaCfg: newProducerKafkaConfig(false),
 		},
 		async: false,
 		topic: retriable.NewTopic(retriable.NormalizeMainTopicName(event)),
@@ -130,6 +130,7 @@ func (k *kProducer) Close() error {
 }
 
 func (k *kProducer) initProducer() error {
+	k.conf.KafkaCfg = newProducerKafkaConfig(k.async)
 	if !k.async {
 		producer, err := newSyncPublisher(k.conf.Brokers, k.conf.KafkaCfg)
 		k.producer = producer

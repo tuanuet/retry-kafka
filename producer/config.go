@@ -13,7 +13,7 @@ type config struct {
 }
 
 // newProducerKafkaConfig is used to create config.
-func newProducerKafkaConfig() *sarama.Config {
+func newProducerKafkaConfig(async bool) *sarama.Config {
 	/**
 	|-------------------------------------------------------------------------
 	| Sarama configuration
@@ -24,7 +24,8 @@ func newProducerKafkaConfig() *sarama.Config {
 	kafkaConfig.Producer.Retry.Max = 5
 	kafkaConfig.Producer.Flush.Frequency = 100 * time.Millisecond
 	kafkaConfig.Producer.Flush.Messages = 500
-	kafkaConfig.Producer.Return.Successes = false // not to consume channel success
+
+	kafkaConfig.Producer.Return.Successes = !async
 	kafkaConfig.Producer.Return.Errors = true
 
 	kafkaConfig.Producer.RequiredAcks = sarama.WaitForAll
