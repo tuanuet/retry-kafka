@@ -1,6 +1,8 @@
 package producer
 
 import (
+	"fmt"
+
 	"github.com/IBM/sarama"
 	"github.com/tuanuet/retry-kafka/marshaler"
 	"github.com/tuanuet/retry-kafka/retriable"
@@ -75,6 +77,9 @@ func NewProducer(event retriable.Event, brokers []string, options ...Option) *kP
 		opt(p)
 	}
 
+	if err := p.initProducer(); err != nil {
+		panic(fmt.Errorf("error when init producer: %v", err))
+	}
 	return p
 }
 
