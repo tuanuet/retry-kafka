@@ -276,6 +276,9 @@ func (k *kConsumer) getTopic(name string) *retriable.Topic {
 }
 
 func (k *kConsumer) Close() error {
+	if k.consumerGroup == nil {
+		return nil
+	}
 	if err := k.consumerGroup.Close(); err != nil {
 		return err
 	}

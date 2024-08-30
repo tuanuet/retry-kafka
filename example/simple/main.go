@@ -1,17 +1,14 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"github.com/tuanuet/retry-kafka/producer"
-	"github.com/tuanuet/retry-kafka/retriable"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/tuanuet/retry-kafka/consumer"
+	"github.com/tuanuet/retry-kafka/producer"
 )
 
 // User example models
@@ -37,7 +34,7 @@ func (u UserEvent) GetPartitionValue() string {
 func main() {
 	publisher := producer.NewProducer(&UserEvent{}, []string{"localhost:9092"})
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		if err := publisher.SendMessage(&UserEvent{
 			User{
 				ID:   uint32(i),
@@ -48,6 +45,8 @@ func main() {
 			panic(err)
 		}
 	}
+
+	fmt.Println("done")
 
 	c := consumer.NewConsumer(
 		"test_consumer",
@@ -73,25 +72,25 @@ func main() {
 	//	fmt.Println(u.ID)
 	//	return errors.New("errr")
 	//})
-	go func() {
-		err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
-			fmt.Println("============================================")
-			fmt.Println(len(evts))
-			fmt.Println(len(evts))
-		us := make([]*UserEvent, 0)
-		for _, evt := range evts {
-			u := evt.(*UserEvent)
-				us = append(us, u)
-			}
-
-			return errors.New("aaaa")
-		})
-
-		fmt.Println("[2] doing")
-		if err != nil {
-			panic(err)
-		}
-	}()
+	//go func() {
+	//	err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
+	//		fmt.Println("============================================")
+	//		fmt.Println(len(evts))
+	//		fmt.Println(len(evts))
+	//	us := make([]*UserEvent, 0)
+	//	for _, evt := range evts {
+	//		u := evt.(*UserEvent)
+	//			us = append(us, u)
+	//		}
+	//
+	//		return errors.New("aaaa")
+	//	})
+	//
+	//	fmt.Println("[2] doing")
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//}()
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)

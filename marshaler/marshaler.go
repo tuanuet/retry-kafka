@@ -1,6 +1,7 @@
 package marshaler
 
 import (
+	"errors"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -35,4 +36,29 @@ func (m MsgpackMarshaler) Marshal(v interface{}) ([]byte, error) {
 
 func (m MsgpackMarshaler) Unmarshal(data []byte, v interface{}) error {
 	return msgpack.Unmarshal(data, v)
+}
+
+// ByteMarshaler ...
+type ByteMarshaler struct {
+}
+
+func (m ByteMarshaler) Marshal(v interface{}) ([]byte, error) {
+	switch data := v.(type) {
+	case []byte:
+		return data, nil
+	case string:
+		return []byte(data), nil
+	default:
+		return nil, errors.New("invalid byte marshaler")
+	}
+}
+
+func (m ByteMarshaler) Unmarshal(data []byte, v interface{}) error {
+	switch v.(type) {
+	case *[]byte:
+		*(v.(*[]byte)) = data
+	default:
+		return errors.New("invalid byte marshaler")
+	}
+	return nil
 }
