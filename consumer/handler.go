@@ -50,8 +50,15 @@ func (h kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, c
 			time.Sleep(topic.Pending - since)
 		}
 
-		h.subscriber.consumerGroup.Resume(topicPause)
+		if !h.subscriber.isLongProcessing {
+			h.subscriber.consumerGroup.Resume(topicPause)
+		}
 		if err := h.handleMessage(newMsg); err != nil {
+			// resume when done handler
+			if h.subscriber.isLongProcessing {
+				h.subscriber.consumerGroup.Resume(topicPause)
+			}
+
 			if ok := errors.Is(err, retriable.ErrorWithoutRetry); ok {
 				if err := h.subscriber.sendDQL(newMsg); err != nil {
 					return err

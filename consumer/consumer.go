@@ -78,6 +78,13 @@ func WithKafkaVersion(version string) Option {
 	}
 }
 
+// WithLongProcessing ...
+func WithLongProcessing(isLongProcessing bool) Option {
+	return func(opt *kConsumer) {
+		opt.isLongProcessing = isLongProcessing
+	}
+}
+
 type kConsumer struct {
 	subscriberName string
 
@@ -100,6 +107,7 @@ type kConsumer struct {
 		size     int32
 		duration time.Duration
 	}
+	isLongProcessing bool
 
 	marshaler marshaler.Marshaler
 }
