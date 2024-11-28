@@ -29,7 +29,7 @@ func newProducerKafkaConfig(async bool) *sarama.Config {
 	kafkaConfig.Producer.Return.Errors = true
 
 	kafkaConfig.Producer.RequiredAcks = sarama.WaitForAll
-	kafkaConfig.Producer.Compression = sarama.CompressionLZ4
+	kafkaConfig.Producer.Compression = sarama.CompressionZSTD
 
 	return kafkaConfig
 }

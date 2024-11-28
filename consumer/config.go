@@ -32,6 +32,8 @@ func newConsumerKafkaConfig() *sarama.Config {
 	kafkaConfig.Consumer.Group.Rebalance.Retry.Max = 5
 	kafkaConfig.Consumer.Group.Rebalance.Retry.Backoff = 1 * time.Second
 	kafkaConfig.Consumer.MaxProcessingTime = 30 * time.Second
+	kafkaConfig.Consumer.Fetch.Default = 64 * 1024
+	kafkaConfig.Consumer.Fetch.Max = 1024 * 1024
 
 	return kafkaConfig
 }

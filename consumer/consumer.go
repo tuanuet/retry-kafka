@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -43,6 +44,13 @@ func WithMarshaler(mr marshaler.Marshaler) Option {
 func WithRetries(opts []RetryOption) Option {
 	return func(k *kConsumer) {
 		k.retryConfigs = opts
+	}
+}
+
+// WithMessageBytes can handle memory consume message
+func WithMessageBytes(bytes int32) Option {
+	return func(k *kConsumer) {
+		k.conf.KafkaCfg.Consumer.Fetch.Default = bytes
 	}
 }
 
@@ -207,7 +215,7 @@ func (k *kConsumer) ShouldReBalance() (bool, error) {
 		return false, fmt.Errorf("error when fetch groups is not single: %v", groups)
 	}
 	group := groups[0]
-	if group.Err != sarama.ErrNoError {
+	if !errors.Is(group.Err, sarama.ErrNoError) {
 		return false, group.Err
 	}
 

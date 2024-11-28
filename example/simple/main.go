@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/tuanuet/retry-kafka/consumer"
-	"github.com/tuanuet/retry-kafka/producer"
+	"github.com/tuanuet/retry-kafka/retriable"
 )
 
 // User example models
@@ -32,65 +36,60 @@ func (u UserEvent) GetPartitionValue() string {
 }
 
 func main() {
-	publisher := producer.NewProducer(&UserEvent{}, []string{"localhost:9092"})
-
-	for i := 0; i < 10; i++ {
-		if err := publisher.SendMessage(&UserEvent{
-			User{
-				ID:   uint32(i),
-				Name: "tuan",
-				Age:  27,
-			},
-		}, nil); err != nil {
-			panic(err)
-		}
-	}
-
-	fmt.Println("done")
-
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+	//
+	//publisher := producer.NewProducer(&UserEvent{}, []string{"localhost:9092"}, producer.WithAsync())
+	//
+	//for i := 0; i < 1000000; i++ {
+	//	if err := publisher.SendMessage(&UserEvent{
+	//		User{
+	//			ID:   uint32(i),
+	//			Name: "tuan",
+	//			Age:  27,
+	//		},
+	//	}, nil); err != nil {
+	//		panic(err)
+	//	}
+	//}
+	//
+	//fmt.Println("done")
 	c := consumer.NewConsumer(
 		"test_consumer",
 		&UserEvent{},
 		[]string{"localhost:9092"},
-		consumer.WithBatchFlush(10, 500*time.Millisecond),
 		consumer.WithRetries([]consumer.RetryOption{
 			{Pending: 10 * time.Second},
 			{Pending: 15 * time.Second},
 		}),
 	)
 
-	//err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
-	//	u := evt.(*UserEvent)
-	//	fmt.Println(u.Age)
-	//
-	//	return errors.New("aaaa")
-	//})
-
-	//err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
-	//	fmt.Println("===========================================================")
-	//	u := evt.(*UserEvent)
-	//	fmt.Println(u.ID)
-	//	return errors.New("errr")
-	//})
 	//go func() {
-	//	err := c.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
-	//		fmt.Println("============================================")
-	//		fmt.Println(len(evts))
-	//		fmt.Println(len(evts))
-	//	us := make([]*UserEvent, 0)
-	//	for _, evt := range evts {
-	//		u := evt.(*UserEvent)
-	//			us = append(us, u)
+	//	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+	//		rebalance, err := c.ShouldReBalance()
+	//		if err != nil {
+	//			writer.Write([]byte(err.Error()))
+	//			return
 	//		}
 	//
-	//		return errors.New("aaaa")
+	//		if rebalance {
+	//			writer.Write([]byte("rebalance"))
+	//		} else {
+	//			writer.Write([]byte("not rebalance"))
+	//		}
 	//	})
 	//
-	//	fmt.Println("[2] doing")
-	//	if err != nil {
-	//		panic(err)
-	//	}
+	//	fmt.Println("Server listening on port 1234 ...")
+	//	fmt.Println(http.ListenAndServe(":1234", nil))
 	//}()
+
+	_ = c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
+		//u := evt.(*UserEvent)
+		//fmt.Println(u.Age)
+		time.Sleep(5 * time.Millisecond)
+		return nil
+	})
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
