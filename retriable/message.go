@@ -10,14 +10,14 @@ import (
 )
 
 type Message struct {
-	msg       *sarama.ConsumerMessage
+	msg       sarama.ConsumerMessage
 	marshaler marshaler.Marshaler
 }
 
 // NewMessage create a new message.
 func NewMessage(msg *sarama.ConsumerMessage, marshaler marshaler.Marshaler) *Message {
 	newMsg := &Message{
-		msg:       msg,
+		msg:       *msg,
 		marshaler: marshaler,
 	}
 	return newMsg
@@ -66,7 +66,7 @@ func (m *Message) SetHeaderByKey(key []byte, val []byte) {
 	})
 }
 
-func (m *Message) GetRaw() *sarama.ConsumerMessage {
+func (m *Message) GetRaw() sarama.ConsumerMessage {
 	return m.msg
 }
 

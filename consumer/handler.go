@@ -59,6 +59,9 @@ func (h kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, c
 				h.subscriber.consumerGroup.Resume(topicPause)
 			}
 
+			// Append more header
+			newMsg.SetHeaderByKey([]byte("_retry_error"), []byte(err.Error()))
+
 			if ok := errors.Is(err, retriable.ErrorWithoutRetry); ok {
 				if err := h.subscriber.sendDQL(newMsg); err != nil {
 					return err

@@ -132,10 +132,8 @@ func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSessi
 		return nil
 	}
 	if errs := h.handleMessages(msgs); errs != nil {
-
 		for i, msg := range msgs {
-			err := errs[i]
-			if err != nil {
+			if err := errs[i]; err != nil {
 				if ok := errors.Is(err, retriable.ErrorWithoutRetry); ok {
 					if err := h.subscriber.sendDQL(msg); err != nil {
 						return err
@@ -144,10 +142,10 @@ func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSessi
 					return err
 				}
 			}
-
 		}
 	}
-	sess.MarkMessage(msgs[len(msgs)-1].GetRaw(), "")
+	msg := msgs[len(msgs)-1].GetRaw()
+	sess.MarkOffset(msg.Topic, msg.Partition, msg.Offset, "")
 	//sess.Commit()
 	return nil
 }
