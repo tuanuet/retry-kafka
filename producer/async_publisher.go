@@ -34,6 +34,5 @@ func (ap *asyncPublisher) SendMessage(msg *sarama.ProducerMessage) error {
 }
 
 func (ap *asyncPublisher) Close() error {
-	ap.producer.AsyncClose()
-	return nil
+	return ap.producer.Close()
 }
