@@ -93,6 +93,15 @@ func WithLongProcessing(isLongProcessing bool) Option {
 	}
 }
 
+// WithLogger ...
+func WithLogger(logger Logger) Option {
+	return func(opt *kConsumer) {
+		opt.logger = logger
+	}
+}
+
+type Logger = sarama.StdLogger
+
 type kConsumer struct {
 	subscriberName string
 
@@ -118,6 +127,7 @@ type kConsumer struct {
 	isLongProcessing bool
 
 	marshaler marshaler.Marshaler
+	logger    Logger
 }
 
 // NewConsumer ...

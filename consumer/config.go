@@ -1,8 +1,7 @@
 package consumer
 
 import (
-	"log"
-	"os"
+	"github.com/rcrowley/go-metrics"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -16,9 +15,12 @@ type config struct {
 
 // newConsumerKafkaConfig is used to create config.
 func newConsumerKafkaConfig() *sarama.Config {
+	// sometime memory leak when default=false
+	metrics.UseNilMetrics = true
+
 	kafkaConfig := sarama.NewConfig()
 	kafkaConfig.Version = retriable.KafkaDefaultVersion
-	sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
+	//sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 
 	kafkaConfig.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{
 		sarama.NewBalanceStrategySticky(),
@@ -34,6 +36,8 @@ func newConsumerKafkaConfig() *sarama.Config {
 	kafkaConfig.Consumer.MaxProcessingTime = 30 * time.Second
 	kafkaConfig.Consumer.Fetch.Default = 64 * 1024
 	kafkaConfig.Consumer.Fetch.Max = 1024 * 1024
+
+	kafkaConfig.MetricRegistry.UnregisterAll()
 
 	return kafkaConfig
 }
