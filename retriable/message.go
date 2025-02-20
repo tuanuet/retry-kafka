@@ -2,20 +2,20 @@ package retriable
 
 import (
 	"bytes"
+	"github.com/tuanuet/retry-kafka/marshaller"
 	"reflect"
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/marshaler"
 )
 
 type Message struct {
 	msg       sarama.ConsumerMessage
-	marshaler marshaler.Marshaler
+	marshaler marshaller.Marshaller
 }
 
 // NewMessage create a new message.
-func NewMessage(msg *sarama.ConsumerMessage, marshaler marshaler.Marshaler) *Message {
+func NewMessage(msg *sarama.ConsumerMessage, marshaler marshaller.Marshaller) *Message {
 	newMsg := &Message{
 		msg:       *msg,
 		marshaler: marshaler,

@@ -95,7 +95,7 @@ func (h kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSess
 				eventChan <- events
 				events = make([]*retriable.Message, 0)
 			case msg := <-claim.Messages():
-				newMsg := retriable.NewMessage(msg, h.subscriber.marshaler)
+				newMsg := retriable.NewMessage(msg, h.subscriber.marshaller)
 				topic := h.subscriber.getTopic(newMsg.GetTopicName())
 				since := newMsg.GetSinceTime()
 				topicPause := map[string][]int32{msg.Topic: {msg.Partition}}

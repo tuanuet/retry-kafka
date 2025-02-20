@@ -31,6 +31,7 @@ func newConsumerKafkaConfig() *sarama.Config {
 	kafkaConfig.Consumer.Offsets.AutoCommit.Interval = 100 * time.Millisecond
 	kafkaConfig.Consumer.Offsets.Retry.Max = 5
 	kafkaConfig.Consumer.Group.Session.Timeout = 30 * time.Second
+	kafkaConfig.Consumer.Group.Heartbeat.Interval = 10 * time.Second
 	kafkaConfig.Consumer.Group.Rebalance.Retry.Max = 5
 	kafkaConfig.Consumer.Group.Rebalance.Retry.Backoff = 1 * time.Second
 	kafkaConfig.Consumer.MaxProcessingTime = 30 * time.Second

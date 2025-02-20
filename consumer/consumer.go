@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tuanuet/retry-kafka/marshaller"
 	"reflect"
 	"time"
-
-	"github.com/tuanuet/retry-kafka/marshaler"
 
 	"github.com/IBM/sarama"
 	"github.com/tuanuet/retry-kafka/producer"
@@ -33,10 +32,10 @@ func WithBatchFlush(size int32, timeFlush time.Duration) Option {
 	}
 }
 
-// WithMarshaler can overwrite marshaler want to send
-func WithMarshaler(mr marshaler.Marshaler) Option {
+// WithMarshaler can overwrite marshaller want to send
+func WithMarshaler(mr marshaller.Marshaller) Option {
 	return func(k *kConsumer) {
-		k.marshaler = mr
+		k.marshaller = mr
 	}
 }
 
@@ -126,8 +125,8 @@ type kConsumer struct {
 	}
 	isLongProcessing bool
 
-	marshaler marshaler.Marshaler
-	logger    Logger
+	marshaller marshaller.Marshaller
+	logger     Logger
 }
 
 // NewConsumer ...
@@ -150,7 +149,7 @@ func NewConsumer(subscriberName string, event retriable.Event, brokers []string,
 			Brokers:  brokers,
 			KafkaCfg: newConsumerKafkaConfig(),
 		},
-		marshaler: marshaler.DefaultMarshaler,
+		marshaller: marshaller.DefaultMarshaller,
 	}
 
 	for _, opt := range options {

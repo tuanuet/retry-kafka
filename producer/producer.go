@@ -2,9 +2,9 @@ package producer
 
 import (
 	"fmt"
+	"github.com/tuanuet/retry-kafka/marshaller"
 
 	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/marshaler"
 	"github.com/tuanuet/retry-kafka/retriable"
 )
 
@@ -16,8 +16,8 @@ type Producer interface {
 // Option ...
 type Option func(*kProducer)
 
-// WithMarshaler can overwrite marshaler want to send
-func WithMarshaler(mr marshaler.Marshaler) Option {
+// WithMarshaler can overwrite marshaller want to send
+func WithMarshaler(mr marshaller.Marshaller) Option {
 	return func(k *kProducer) {
 		k.marshaler = mr
 	}
@@ -56,7 +56,7 @@ type kProducer struct {
 	conf     config
 	producer publisher
 
-	marshaler marshaler.Marshaler
+	marshaler marshaller.Marshaller
 }
 
 // NewProducer initial kafka publisher
@@ -70,7 +70,7 @@ func NewProducer(event retriable.Event, brokers []string, options ...Option) *kP
 		async: false,
 		topic: retriable.NewTopic(retriable.NormalizeMainTopicName(event)),
 		// default JSONMarshaler
-		marshaler: marshaler.DefaultMarshaler,
+		marshaler: marshaller.DefaultMarshaller,
 	}
 
 	for _, opt := range options {

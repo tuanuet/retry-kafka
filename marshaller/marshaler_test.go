@@ -1,4 +1,4 @@
-package marshaler
+package marshaller
 
 import (
 	"testing"
@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestByteMarshaler(t *testing.T) {
-	bm := ByteMarshaler{}
+func TestByteMarshaller(t *testing.T) {
+	bm := ByteMarshaller{}
 	jsonString := `{"name":"tuan"}`
 	bytes, err := bm.Marshal([]byte(jsonString))
 	assert.NoError(t, err)

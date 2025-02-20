@@ -39,7 +39,7 @@ func (kafkaSubscriberHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
 // ConsumeClaim implements the method of interface.
 func (h kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
-		newMsg := retriable.NewMessage(msg, h.subscriber.marshaler)
+		newMsg := retriable.NewMessage(msg, h.subscriber.marshaller)
 		topic := h.subscriber.getTopic(newMsg.GetTopicName())
 		since := newMsg.GetSinceTime()
 
