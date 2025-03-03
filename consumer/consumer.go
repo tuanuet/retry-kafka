@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tuanuet/retry-kafka/marshaller"
+	"log"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -64,6 +66,7 @@ func WithMaxProcessDuration(duration time.Duration) Option {
 func WithBalanceStrategy(balance sarama.BalanceStrategy) Option {
 	return func(opt *kConsumer) {
 		opt.conf.KafkaCfg.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{balance}
+		opt.conf.KafkaCfg.Consumer.Group.Rebalance.Strategy = balance
 	}
 }
 
@@ -71,6 +74,13 @@ func WithBalanceStrategy(balance sarama.BalanceStrategy) Option {
 func WithSessionTimeout(duration time.Duration) Option {
 	return func(opt *kConsumer) {
 		opt.conf.KafkaCfg.Consumer.Group.Session.Timeout = duration
+	}
+}
+
+// WithHeartHeartbeat ...
+func WithHeartHeartbeat(duration time.Duration) Option {
+	return func(opt *kConsumer) {
+		opt.conf.KafkaCfg.Consumer.Group.Heartbeat.Interval = duration
 	}
 }
 
@@ -204,6 +214,31 @@ func (k *kConsumer) Consume(ctx context.Context, handlerFunc HandleFunc) error {
 		topicNames = append(topicNames, t.Name)
 	}
 	handler := newKafkaSubscriberHandler(reflect.TypeOf(k.event), k, handlerFunc)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			// `Consume` should be called inside an infinite loop, when a
+			// server-side rebalance happens, the consumer session will need to be
+			// recreated to get the new claims
+			if err = k.consumerGroup.Consume(ctx, topicNames, handler); err != nil {
+				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
+					return
+				}
+				log.Panicf("Error from consumer: %v", err)
+			}
+			// check if context was cancelled, signaling that the consumer should stop
+			if ctx.Err() != nil {
+				return
+			}
+			handler.ready = make(chan bool)
+		}
+	}()
+
+	<-handler.ready
+
+	wg.Done()
 
 	return k.consumerGroup.Consume(ctx, topicNames, handler)
 }

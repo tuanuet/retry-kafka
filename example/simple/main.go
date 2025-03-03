@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/IBM/sarama"
+	"github.com/tuanuet/retry-kafka/retriable"
 	"log"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/tuanuet/retry-kafka/consumer"
-	"github.com/tuanuet/retry-kafka/retriable"
 )
 
 // User example models
@@ -36,13 +36,13 @@ func (u UserEvent) GetPartitionValue() string {
 }
 
 func main() {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
+	//go func() {
+	//	log.Println(http.ListenAndServe("localhost:6060", nil))
+	//}()
 	//
 	//publisher := producer.NewProducer(&UserEvent{}, []string{"localhost:9092"}, producer.WithAsync())
 	//
-	//for i := 0; i < 1000000; i++ {
+	//for i := 0; i < 1000; i++ {
 	//	if err := publisher.SendMessage(&UserEvent{
 	//		User{
 	//			ID:   uint32(i),
@@ -55,14 +55,16 @@ func main() {
 	//}
 	//
 	//fmt.Println("done")
+	//return
 	c := consumer.NewConsumer(
 		"test_consumer",
 		&UserEvent{},
 		[]string{"localhost:9092"},
-		consumer.WithRetries([]consumer.RetryOption{
-			{Pending: 10 * time.Second},
-			{Pending: 15 * time.Second},
-		}),
+		consumer.WithRetries(nil),
+		consumer.WithBalanceStrategy(sarama.NewBalanceStrategyRoundRobin()),
+		consumer.WithMaxProcessDuration(3*time.Second),
+		consumer.WithSessionTimeout(10*time.Second),
+		consumer.WithHeartHeartbeat(3*time.Second),
 	)
 
 	//go func() {
@@ -84,17 +86,20 @@ func main() {
 	//	fmt.Println(http.ListenAndServe(":1234", nil))
 	//}()
 
-	_ = c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
-		//u := evt.(*UserEvent)
-		//fmt.Println(u.Age)
-		time.Sleep(5 * time.Millisecond)
+	if err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
+		u := evt.(*UserEvent)
+		fmt.Println(u)
+		time.Sleep(2000 * time.Millisecond)
 		return nil
-	})
+	}); err != nil {
+		log.Fatal(err.Error())
+	}
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	<-signals
+	fmt.Println("signal received")
 	c.Close()
 	println("close function!")
 }
