@@ -17,6 +17,7 @@ type kafkaSubscriberBatchHandler struct {
 	evtType       reflect.Type
 	batchSize     int32
 	batchDuration time.Duration
+	ready         chan bool
 }
 
 // BatchHandlerOption ...
@@ -49,6 +50,7 @@ func newKafkaSubscriberBatchHandler(
 		evtType:       evtType,
 		batchSize:     10,
 		batchDuration: 100 * time.Millisecond,
+		ready:         make(chan bool),
 	}
 
 	for _, opt := range opts {
@@ -59,17 +61,18 @@ func newKafkaSubscriberBatchHandler(
 }
 
 // Setup implements the method of interface.
-func (kafkaSubscriberBatchHandler) Setup(_ sarama.ConsumerGroupSession) error {
+func (h *kafkaSubscriberBatchHandler) Setup(_ sarama.ConsumerGroupSession) error {
+	close(h.ready)
 	return nil
 }
 
 // Cleanup implements the method of interface.
-func (kafkaSubscriberBatchHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
+func (h *kafkaSubscriberBatchHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
 	return nil
 }
 
 // ConsumeClaim implements the method of interface.
-func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+func (h *kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	eventChan := h.produceEvents(sess, claim)
 
 	for events := range eventChan {
@@ -82,7 +85,7 @@ func (h kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 	return nil
 }
 
-func (h kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) chan []*retriable.Message {
+func (h *kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) chan []*retriable.Message {
 	eventChan := make(chan []*retriable.Message, 0)
 	batchSize := h.batchSize
 	batchDuration := h.batchDuration
@@ -127,7 +130,7 @@ func (h kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSess
 	return eventChan
 }
 
-func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSession, msgs []*retriable.Message) error {
+func (h *kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSession, msgs []*retriable.Message) error {
 	if len(msgs) == 0 {
 		return nil
 	}
@@ -150,7 +153,7 @@ func (h kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSessi
 	return nil
 }
 
-func (h kafkaSubscriberBatchHandler) handleMessages(msgs []*retriable.Message) (errs []error) {
+func (h *kafkaSubscriberBatchHandler) handleMessages(msgs []*retriable.Message) (errs []error) {
 	type destWithError struct {
 		dest retriable.Event
 		err  error

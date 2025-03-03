@@ -224,12 +224,14 @@ func (k *kConsumer) Consume(ctx context.Context, handlerFunc HandleFunc) error {
 			// recreated to get the new claims
 			if err = k.consumerGroup.Consume(ctx, topicNames, handler); err != nil {
 				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
+					k.logger.Printf("error from consumer: %v", err)
 					return
 				}
-				log.Panicf("Error from consumer: %v", err)
+				log.Panicf("error from consumer: %v", err)
 			}
 			// check if context was cancelled, signaling that the consumer should stop
-			if ctx.Err() != nil {
+			if err = ctx.Err(); err != nil {
+				k.logger.Printf("error from consumer: %v", err)
 				return
 			}
 			handler.ready = make(chan bool)
@@ -289,7 +291,35 @@ func (k *kConsumer) BatchConsume(ctx context.Context, handlerFunc BatchHandleFun
 		withBatchConfig(k.batchFlushConf.size, k.batchFlushConf.duration),
 	)
 
-	return k.consumerGroup.Consume(ctx, topicNames, handler)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			// `Consume` should be called inside an infinite loop, when a
+			// server-side rebalance happens, the consumer session will need to be
+			// recreated to get the new claims
+			if err = k.consumerGroup.Consume(ctx, topicNames, handler); err != nil {
+				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
+					k.logger.Printf("error from consumer: %v", err)
+					return
+				}
+				log.Panicf("error from consumer: %v", err)
+			}
+			// check if context was cancelled, signaling that the consumer should stop
+			if err = ctx.Err(); err != nil {
+				k.logger.Printf("error from consumer: %v", err)
+				return
+			}
+			handler.ready = make(chan bool)
+		}
+	}()
+
+	<-handler.ready
+
+	wg.Done()
+
+	return nil
 }
 
 // sendRetry Retry sends the message to retry topic

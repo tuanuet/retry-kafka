@@ -6,6 +6,7 @@ import (
 	"github.com/tuanuet/retry-kafka/retriable"
 	"log"
 	"reflect"
+	"time"
 )
 
 // kafkaSubscriberBatchHandler is the struct of handler.
@@ -49,24 +50,24 @@ func (h *kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, 
 				return nil
 			}
 			newMsg := retriable.NewMessage(msg, h.subscriber.marshaller)
-			//topic := h.subscriber.getTopic(newMsg.GetTopicName())
-			//since := newMsg.GetSinceTime()
+			topic := h.subscriber.getTopic(newMsg.GetTopicName())
+			since := newMsg.GetSinceTime()
 
-			//topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
-			//if topic.Pending-since > time.Millisecond*100 {
-			//	// pause consume
-			//	h.subscriber.consumerGroup.Pause(topicPause)
-			//	time.Sleep(topic.Pending - since)
-			//}
+			topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
+			if topic.Pending-since > time.Millisecond*100 {
+				// pause consume
+				h.subscriber.consumerGroup.Pause(topicPause)
+				time.Sleep(topic.Pending - since)
+			}
 
-			//if !h.subscriber.isLongProcessing {
-			//	h.subscriber.consumerGroup.Resume(topicPause)
-			//}
+			if !h.subscriber.isLongProcessing {
+				h.subscriber.consumerGroup.Resume(topicPause)
+			}
 			if err := h.handleMessage(newMsg); err != nil {
 				// resume when done handler
-				//if h.subscriber.isLongProcessing {
-				//	h.subscriber.consumerGroup.Resume(topicPause)
-				//}
+				if h.subscriber.isLongProcessing {
+					h.subscriber.consumerGroup.Resume(topicPause)
+				}
 
 				// Append more header
 				newMsg.SetHeaderByKey([]byte("_retry_error"), []byte(err.Error()))
