@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"errors"
+	"log"
 	"reflect"
 	"sort"
 	"time"
@@ -98,6 +99,11 @@ func (h *kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSes
 				eventChan <- events
 				events = make([]*retriable.Message, 0)
 			case msg := <-claim.Messages():
+				if msg == nil {
+					log.Println("message was nil")
+					continue
+				}
+
 				newMsg := retriable.NewMessage(msg, h.subscriber.marshaller)
 				topic := h.subscriber.getTopic(newMsg.GetTopicName())
 				since := newMsg.GetSinceTime()

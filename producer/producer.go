@@ -85,6 +85,9 @@ func NewProducer(event retriable.Event, brokers []string, options ...Option) *kP
 
 // SendMessage ...
 func (k *kProducer) SendMessage(event retriable.Event, headers []*retriable.Header, opts ...SendOption) error {
+	if event == nil {
+		return fmt.Errorf("error event is nil")
+	}
 	body, err := k.marshaler.Marshal(event)
 	if err != nil {
 		panic(err)

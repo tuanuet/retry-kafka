@@ -49,6 +49,10 @@ func (h *kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, 
 				log.Printf("message channel was closed")
 				return nil
 			}
+			if msg == nil {
+				log.Println("message was nil")
+				continue
+			}
 			newMsg := retriable.NewMessage(msg, h.subscriber.marshaller)
 			topic := h.subscriber.getTopic(newMsg.GetTopicName())
 			since := newMsg.GetSinceTime()
