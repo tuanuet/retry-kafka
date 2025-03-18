@@ -109,6 +109,20 @@ func WithLogger(logger Logger) Option {
 	}
 }
 
+// WithEnableRetry ...
+func WithEnableRetry(enable bool) Option {
+	return func(opt *kConsumer) {
+		opt.enableRetry = enable
+	}
+}
+
+// WithEnableDlq ...
+func WithEnableDlq(enable bool) Option {
+	return func(opt *kConsumer) {
+		opt.enableDlq = enable
+	}
+}
+
 type Logger = sarama.StdLogger
 
 type kConsumer struct {

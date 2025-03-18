@@ -1,10 +1,11 @@
 package consumer
 
 import (
-	"github.com/rcrowley/go-metrics"
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/rcrowley/go-metrics"
+
 	"github.com/tuanuet/retry-kafka/retriable"
 )
 

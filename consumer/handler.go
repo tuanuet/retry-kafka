@@ -2,11 +2,12 @@ package consumer
 
 import (
 	"errors"
-	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/retriable"
 	"log"
 	"reflect"
 	"time"
+
+	"github.com/IBM/sarama"
+	"github.com/tuanuet/retry-kafka/retriable"
 )
 
 // kafkaSubscriberBatchHandler is the struct of handler.
