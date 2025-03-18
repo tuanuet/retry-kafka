@@ -77,8 +77,8 @@ func WithSessionTimeout(duration time.Duration) Option {
 	}
 }
 
-// WithHeartHeartbeat ...
-func WithHeartHeartbeat(duration time.Duration) Option {
+// WithHeartbeatInterval ...
+func WithHeartbeatInterval(duration time.Duration) Option {
 	return func(opt *kConsumer) {
 		opt.conf.KafkaCfg.Consumer.Group.Heartbeat.Interval = duration
 	}

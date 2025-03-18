@@ -64,7 +64,10 @@ func main() {
 		consumer.WithBalanceStrategy(sarama.NewBalanceStrategyRoundRobin()),
 		consumer.WithMaxProcessDuration(3*time.Second),
 		consumer.WithSessionTimeout(10*time.Second),
-		consumer.WithHeartHeartbeat(3*time.Second),
+		consumer.WithHeartbeatInterval(3*time.Second),
+		consumer.WithRetries(nil),
+		consumer.WithEnableDlq(false),
+		//consumer.WithRetries()
 	)
 
 	//go func() {
@@ -90,7 +93,7 @@ func main() {
 		u := evt.(*UserEvent)
 		fmt.Println(u)
 		time.Sleep(2000 * time.Millisecond)
-		return nil
+		return fmt.Errorf("err")
 	}); err != nil {
 		log.Fatal(err.Error())
 	}
