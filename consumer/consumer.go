@@ -7,7 +7,6 @@ import (
 	"github.com/tuanuet/retry-kafka/marshaller"
 	"log"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -174,6 +173,7 @@ func NewConsumer(subscriberName string, event retriable.Event, brokers []string,
 			KafkaCfg: newConsumerKafkaConfig(),
 		},
 		marshaller: marshaller.DefaultMarshaller,
+		logger:     log.Default(),
 	}
 
 	for _, opt := range options {
@@ -228,35 +228,36 @@ func (k *kConsumer) Consume(ctx context.Context, handlerFunc HandleFunc) error {
 		topicNames = append(topicNames, t.Name)
 	}
 	handler := newKafkaSubscriberHandler(reflect.TypeOf(k.event), k, handlerFunc)
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
+
 	go func() {
-		defer wg.Done()
 		for {
-			// `Consume` should be called inside an infinite loop, when a
-			// server-side rebalance happens, the consumer session will need to be
-			// recreated to get the new claims
-			if err = k.consumerGroup.Consume(ctx, topicNames, handler); err != nil {
-				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
+			select {
+			case <-ctx.Done():
+				k.consumerGroup.Close()
+				k.logger.Println("Shutting down consumer...")
+				return
+			default:
+				if err = k.consumerGroup.Consume(ctx, topicNames, handler); err != nil {
+					if errors.Is(err, sarama.ErrClosedConsumerGroup) {
+						k.logger.Printf("error from consumer: %v", err)
+						return
+					}
 					k.logger.Printf("error from consumer: %v", err)
 					return
 				}
-				log.Panicf("error from consumer: %v", err)
+				// check if context was cancelled, signaling that the consumer should stop
+				if err = ctx.Err(); err != nil {
+					k.logger.Printf("error from consumer: %v", err)
+					return
+				}
+				handler.ready = make(chan bool)
 			}
-			// check if context was cancelled, signaling that the consumer should stop
-			if err = ctx.Err(); err != nil {
-				k.logger.Printf("error from consumer: %v", err)
-				return
-			}
-			handler.ready = make(chan bool)
 		}
 	}()
 
 	<-handler.ready
 
-	wg.Done()
-
-	return k.consumerGroup.Consume(ctx, topicNames, handler)
+	return nil
 }
 
 // ShouldReBalance check member of group is not empty
@@ -305,33 +306,33 @@ func (k *kConsumer) BatchConsume(ctx context.Context, handlerFunc BatchHandleFun
 		withBatchConfig(k.batchFlushConf.size, k.batchFlushConf.duration),
 	)
 
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		for {
-			// `Consume` should be called inside an infinite loop, when a
-			// server-side rebalance happens, the consumer session will need to be
-			// recreated to get the new claims
-			if err = k.consumerGroup.Consume(ctx, topicNames, handler); err != nil {
-				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
+			select {
+			case <-ctx.Done():
+				k.consumerGroup.Close()
+				k.logger.Println("Shutting down consumer...")
+				return
+			default:
+				if err = k.consumerGroup.Consume(ctx, topicNames, handler); err != nil {
+					if errors.Is(err, sarama.ErrClosedConsumerGroup) {
+						k.logger.Printf("error from consumer: %v", err)
+						return
+					}
 					k.logger.Printf("error from consumer: %v", err)
 					return
 				}
-				log.Panicf("error from consumer: %v", err)
+				// check if context was cancelled, signaling that the consumer should stop
+				if err = ctx.Err(); err != nil {
+					k.logger.Printf("error from consumer: %v", err)
+					return
+				}
+				handler.ready = make(chan bool)
 			}
-			// check if context was cancelled, signaling that the consumer should stop
-			if err = ctx.Err(); err != nil {
-				k.logger.Printf("error from consumer: %v", err)
-				return
-			}
-			handler.ready = make(chan bool)
 		}
 	}()
 
 	<-handler.ready
-
-	wg.Done()
 
 	return nil
 }
@@ -362,7 +363,7 @@ func (k *kConsumer) sendDQL(msg *retriable.Message) (err error) {
 	}
 
 	if k.dlqTopic != nil {
-		// TODO: Should add Function for send raw message
+		// Should add Function for send raw message
 		var evt retriable.Event
 		evt, err = msg.Unmarshal(reflect.TypeOf(k.event))
 		if err != nil {

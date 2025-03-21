@@ -89,20 +89,24 @@ func main() {
 	//	fmt.Println(http.ListenAndServe(":1234", nil))
 	//}()
 
-	if err := c.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := c.Consume(ctx, func(evt retriable.Event, headers []*retriable.Header) error {
 		u := evt.(*UserEvent)
 		fmt.Println(u)
-		time.Sleep(2000 * time.Millisecond)
-		return fmt.Errorf("err")
+		time.Sleep(200 * time.Millisecond)
+		return nil
 	}); err != nil {
 		log.Fatal(err.Error())
 	}
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-
 	<-signals
+	cancel()
+
 	fmt.Println("signal received")
-	c.Close()
-	println("close function!")
+
+	time.Sleep(5 * time.Second)
 }
