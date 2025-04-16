@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/IBM/sarama"
+	"github.com/tuanuet/retry-kafka/consumer/kafka"
 	"github.com/tuanuet/retry-kafka/retriable"
 	"log"
 	_ "net/http/pprof"
@@ -11,8 +12,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/tuanuet/retry-kafka/consumer"
 )
 
 // User example models
@@ -56,17 +55,17 @@ func main() {
 	//
 	//fmt.Println("done")
 	//return
-	c := consumer.NewConsumer(
+	c := kafka.NewConsumer(
 		"test_consumer",
 		&UserEvent{},
 		[]string{"localhost:9092"},
-		consumer.WithRetries(nil),
-		consumer.WithBalanceStrategy(sarama.NewBalanceStrategyRoundRobin()),
-		consumer.WithMaxProcessDuration(3*time.Second),
-		consumer.WithSessionTimeout(10*time.Second),
-		consumer.WithHeartbeatInterval(3*time.Second),
-		consumer.WithRetries(nil),
-		consumer.WithEnableDlq(false),
+		kafka.WithRetries(nil),
+		kafka.WithBalanceStrategy(sarama.NewBalanceStrategyRoundRobin()),
+		kafka.WithMaxProcessDuration(3*time.Second),
+		kafka.WithSessionTimeout(10*time.Second),
+		kafka.WithHeartbeatInterval(3*time.Second),
+		kafka.WithRetries(nil),
+		kafka.WithEnableDlq(false),
 		//consumer.WithRetries()
 	)
 

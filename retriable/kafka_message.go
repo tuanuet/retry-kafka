@@ -2,39 +2,43 @@ package retriable
 
 import (
 	"bytes"
-	"github.com/tuanuet/retry-kafka/marshaller"
 	"reflect"
 	"time"
 
 	"github.com/IBM/sarama"
+
+	"github.com/tuanuet/retry-kafka/marshaller"
 )
 
-type Message struct {
-	msg       sarama.ConsumerMessage
-	marshaler marshaller.Marshaller
+type KafkaMessage struct {
+	msg   sarama.ConsumerMessage
+	value []byte
+	topic string
+
+	marshaller marshaller.Marshaller
 }
 
-// NewMessage create a new message.
-func NewMessage(msg *sarama.ConsumerMessage, marshaler marshaller.Marshaller) *Message {
-	newMsg := &Message{
-		msg:       *msg,
-		marshaler: marshaler,
+// NewKafkaMessage create a new message.
+func NewKafkaMessage(msg *sarama.ConsumerMessage, marshaller marshaller.Marshaller) Message {
+	newMsg := &KafkaMessage{
+		msg:        *msg,
+		marshaller: marshaller,
 	}
 	return newMsg
 }
 
 // GetData gets data of msg
-func (m *Message) GetData() []byte {
+func (m *KafkaMessage) GetData() []byte {
 	return m.msg.Value
 }
 
 // GetTopicName gets topic of msg
-func (m *Message) GetTopicName() string {
+func (m *KafkaMessage) GetTopicName() string {
 	return m.msg.Topic
 }
 
 // GetHeaders gets header of msg
-func (m *Message) GetHeaders() []*Header {
+func (m *KafkaMessage) GetHeaders() []*Header {
 	headers := make([]*Header, 0)
 	for _, header := range m.msg.Headers {
 		headers = append(headers, &Header{
@@ -46,11 +50,11 @@ func (m *Message) GetHeaders() []*Header {
 }
 
 // GetSinceTime gets the remain time of a message before retried.
-func (m *Message) GetSinceTime() time.Duration {
+func (m *KafkaMessage) GetSinceTime() time.Duration {
 	return time.Since(m.msg.Timestamp)
 }
 
-func (m *Message) GetHeaderByKey(key []byte) []byte {
+func (m *KafkaMessage) GetHeaderByKey(key []byte) []byte {
 	for _, h := range m.msg.Headers {
 		if h != nil && bytes.Equal(h.Key, key) {
 			return h.Value
@@ -59,22 +63,22 @@ func (m *Message) GetHeaderByKey(key []byte) []byte {
 	return nil
 }
 
-func (m *Message) SetHeaderByKey(key []byte, val []byte) {
+func (m *KafkaMessage) SetHeaderByKey(key []byte, val []byte) {
 	m.msg.Headers = append(m.msg.Headers, &sarama.RecordHeader{
 		Key:   key,
 		Value: val,
 	})
 }
 
-func (m *Message) GetRaw() sarama.ConsumerMessage {
+func (m *KafkaMessage) GetRaw() interface{} {
 	return m.msg
 }
 
 // Unmarshal ...
-func (m *Message) Unmarshal(evtType reflect.Type) (Event, error) {
+func (m *KafkaMessage) Unmarshal(evtType reflect.Type) (Event, error) {
 	evtInstance := reflect.New(evtType.Elem()).Interface()
 
-	if err := m.marshaler.Unmarshal(m.GetData(), evtInstance); err != nil {
+	if err := m.marshaller.Unmarshal(m.GetData(), evtInstance); err != nil {
 		return nil, err
 	}
 
