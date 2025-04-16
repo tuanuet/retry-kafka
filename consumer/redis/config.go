@@ -1,17 +1,14 @@
-package consumer
+package redis
 
 import (
 	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/rcrowley/go-metrics"
-
-	"github.com/tuanuet/retry-kafka/retriable"
 )
 
 type config struct {
-	Brokers  []string
-	KafkaCfg *sarama.Config
+	Brokers []string
 }
 
 // newConsumerKafkaConfig is used to create config.
@@ -45,14 +42,3 @@ func newConsumerKafkaConfig() *sarama.Config {
 
 	return kafkaConfig
 }
-
-// RetryOption is the option for retry topic.
-type RetryOption struct {
-	Pending time.Duration
-}
-
-// HandleFunc ...
-type HandleFunc func(evt retriable.Event, headers []*retriable.Header) error
-
-// BatchHandleFunc ...
-type BatchHandleFunc func(evts []retriable.Event, headers [][]*retriable.Header) error

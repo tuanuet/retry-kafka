@@ -1,7 +1,9 @@
-package consumer
+package kafka
 
 import (
 	"errors"
+	"fmt"
+	"github.com/tuanuet/retry-kafka/consumer"
 	"log"
 	"reflect"
 	"sort"
@@ -13,7 +15,7 @@ import (
 
 // kafkaSubscriberBatchHandler is the struct of handler.
 type kafkaSubscriberBatchHandler struct {
-	process       BatchHandleFunc
+	process       consumer.BatchHandleFunc
 	subscriber    *kConsumer
 	evtType       reflect.Type
 	batchSize     int32
@@ -42,7 +44,7 @@ func withBatchConfig(size int32, timeFlush time.Duration) BatchHandlerOption {
 func newKafkaSubscriberBatchHandler(
 	evtType reflect.Type,
 	subscriber *kConsumer,
-	handler BatchHandleFunc,
+	handler consumer.BatchHandleFunc,
 	opts ...BatchHandlerOption,
 ) *kafkaSubscriberBatchHandler {
 	h := &kafkaSubscriberBatchHandler{
@@ -86,25 +88,25 @@ func (h *kafkaSubscriberBatchHandler) ConsumeClaim(sess sarama.ConsumerGroupSess
 	return nil
 }
 
-func (h *kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) chan []*retriable.Message {
-	eventChan := make(chan []*retriable.Message, 0)
+func (h *kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) chan []retriable.Message {
+	eventChan := make(chan []retriable.Message, 0)
 	batchSize := h.batchSize
 	batchDuration := h.batchDuration
-	events := make([]*retriable.Message, 0)
+	events := make([]retriable.Message, 0)
 	go func() {
 		defer close(eventChan)
 		for {
 			select {
 			case <-time.After(batchDuration):
 				eventChan <- events
-				events = make([]*retriable.Message, 0)
+				events = make([]retriable.Message, 0)
 			case msg := <-claim.Messages():
 				if msg == nil {
 					log.Println("message was nil")
 					continue
 				}
 
-				newMsg := retriable.NewMessage(msg, h.subscriber.marshaller)
+				newMsg := retriable.NewKafkaMessage(msg, h.subscriber.marshaller)
 				topic := h.subscriber.getTopic(newMsg.GetTopicName())
 				since := newMsg.GetSinceTime()
 				topicPause := map[string][]int32{msg.Topic: {msg.Partition}}
@@ -112,7 +114,7 @@ func (h *kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSes
 					h.subscriber.consumerGroup.Pause(topicPause)
 					// flush all message
 					eventChan <- events
-					events = make([]*retriable.Message, 0)
+					events = make([]retriable.Message, 0)
 					time.Sleep(topic.Pending - since)
 				}
 
@@ -121,13 +123,13 @@ func (h *kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSes
 
 				if len(events) >= int(batchSize) {
 					eventChan <- events
-					events = make([]*retriable.Message, 0)
+					events = make([]retriable.Message, 0)
 					continue
 				}
 
 			case <-sess.Context().Done():
 				eventChan <- events
-				events = make([]*retriable.Message, 0)
+				events = make([]retriable.Message, 0)
 				return
 			}
 		}
@@ -136,7 +138,7 @@ func (h *kafkaSubscriberBatchHandler) produceEvents(sess sarama.ConsumerGroupSes
 	return eventChan
 }
 
-func (h *kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSession, msgs []*retriable.Message) error {
+func (h *kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSession, msgs []retriable.Message) error {
 	if len(msgs) == 0 {
 		return nil
 	}
@@ -154,12 +156,16 @@ func (h *kafkaSubscriberBatchHandler) execMessages(sess sarama.ConsumerGroupSess
 		}
 	}
 	msg := msgs[len(msgs)-1].GetRaw()
-	sess.MarkOffset(msg.Topic, msg.Partition, msg.Offset, "")
+	m, ok := msg.(sarama.ConsumerMessage)
+	if !ok {
+		return fmt.Errorf("message was not a ConsumerMessage")
+	}
+	sess.MarkOffset(m.Topic, m.Partition, m.Offset, "")
 	//sess.Commit()
 	return nil
 }
 
-func (h *kafkaSubscriberBatchHandler) handleMessages(msgs []*retriable.Message) (errs []error) {
+func (h *kafkaSubscriberBatchHandler) handleMessages(msgs []retriable.Message) (errs []error) {
 	type destWithError struct {
 		dest retriable.Event
 		err  error

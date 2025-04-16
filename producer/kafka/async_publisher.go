@@ -1,4 +1,4 @@
-package producer
+package kafka
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ func newAsyncPublisher(brokers []string, cfg *sarama.Config) (*asyncPublisher, e
 
 	go func() {
 		for errProducer := range ap.Errors() {
-			fmt.Printf("error when publisher async: %v", errProducer)
+			fmt.Printf("error when Publisher async: %v", errProducer)
 		}
 	}()
 

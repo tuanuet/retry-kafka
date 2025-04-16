@@ -1,7 +1,8 @@
-package consumer
+package kafka
 
 import (
 	"errors"
+	"github.com/tuanuet/retry-kafka/consumer"
 	"log"
 	"reflect"
 	"time"
@@ -12,14 +13,14 @@ import (
 
 // kafkaSubscriberBatchHandler is the struct of handler.
 type kafkaSubscriberHandler struct {
-	process    HandleFunc
+	process    consumer.HandleFunc
 	subscriber *kConsumer
 	evtType    reflect.Type
 	ready      chan bool
 }
 
 // newKafkaSubscriberHandler create an instance from consumer.
-func newKafkaSubscriberHandler(evtType reflect.Type, subscriber *kConsumer, handler HandleFunc) *kafkaSubscriberHandler {
+func newKafkaSubscriberHandler(evtType reflect.Type, subscriber *kConsumer, handler consumer.HandleFunc) *kafkaSubscriberHandler {
 	h := kafkaSubscriberHandler{
 		subscriber: subscriber,
 		process:    handler,
@@ -54,7 +55,7 @@ func (h *kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, 
 				log.Println("message was nil")
 				continue
 			}
-			newMsg := retriable.NewMessage(msg, h.subscriber.marshaller)
+			newMsg := retriable.NewKafkaMessage(msg, h.subscriber.marshaller)
 			topic := h.subscriber.getTopic(newMsg.GetTopicName())
 			since := newMsg.GetSinceTime()
 
@@ -93,7 +94,7 @@ func (h *kafkaSubscriberHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, 
 
 }
 
-func (h *kafkaSubscriberHandler) handleMessage(msg *retriable.Message) error {
+func (h *kafkaSubscriberHandler) handleMessage(msg retriable.Message) error {
 	var evt retriable.Event
 	var err error
 	if evt, err = msg.Unmarshal(h.evtType); err != nil {

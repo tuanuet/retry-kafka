@@ -1,6 +1,5 @@
 # Kafka Retry Pattern
 
-
 ```go
 package main
 
@@ -8,14 +7,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tuanuet/retry-kafka/producer"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/consumer"
+	kafkap "github.com/tuanuet/retry-kafka/producer/kafka"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/tuanuet/retry-kafka/consumer"
+	kafkac "github.com/tuanuet/retry-kafka/consumer/kafka"
+	"github.com/tuanuet/retry-kafka/producer"
+	"github.com/tuanuet/retry-kafka/retriable"
 )
 
 // User example models
@@ -39,7 +40,7 @@ func (u UserEvent) GetPartitionValue() string {
 }
 
 func main() {
-	publisher := producer.NewProducer(&UserEvent{}, []string{"localhost:9092"})
+	publisher := kafkap.NewProducer(&UserEvent{}, []string{"localhost:9092"})
 
 	for i := 0; i < 100; i++ {
 		if err := publisher.SendMessage(&UserEvent{
@@ -53,12 +54,12 @@ func main() {
 		}
 	}
 
-	c := consumer.NewConsumer(
+	c := kafkac.NewConsumer(
 		"test_consumer",
 		&UserEvent{},
 		[]string{"localhost:9092"},
-		consumer.WithBatchFlush(10, 500*time.Millisecond),
-		consumer.WithRetries([]consumer.RetryOption{
+		kafkac.WithBatchFlush(10, 500*time.Millisecond),
+		kafkac.WithRetries([]consumer.RetryOption{
 			{Pending: 10 * time.Second},
 			{Pending: 15 * time.Second},
 		}),
@@ -82,9 +83,9 @@ func main() {
 			fmt.Println("============================================")
 			fmt.Println(len(evts))
 			fmt.Println(len(evts))
-		us := make([]*UserEvent, 0)
-		for _, evt := range evts {
-			u := evt.(*UserEvent)
+			us := make([]*UserEvent, 0)
+			for _, evt := range evts {
+				u := evt.(*UserEvent)
 				us = append(us, u)
 			}
 
@@ -106,3 +107,6 @@ func main() {
 }
 
 ```
+
+## ChangeLog
+- [2025-04-16] Support redis-stream from version 2.0.0
