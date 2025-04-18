@@ -16,6 +16,7 @@ import (
 type KeyDistributor struct {
 	redis             *redis.Client
 	logger            Logger
+	pattern           string
 	processID         string
 	processesKey      string // Prefix for process heartbeat keys (e.g., keydistributor:processes:)
 	lastUpdateKey     string // Redis key to store last update timestamp
@@ -31,6 +32,7 @@ type KeyDistributor struct {
 type Config struct {
 	RedisClient       *redis.Client // Redis client
 	Logger            Logger        // Logger for logging
+	Pattern           string
 	ProcessID         string
 	Prefix            string        // Prefix for keys and channels
 	TTL               time.Duration // TTL for process registration
@@ -45,6 +47,9 @@ func NewKeyDistributor(config Config) (*KeyDistributor, error) {
 	if config.Prefix == "" {
 		return nil, fmt.Errorf("prefix must not be empty")
 	}
+	if config.Pattern == "" {
+		return nil, fmt.Errorf("pattern must not be empty")
+	}
 
 	// Test Redis connection
 	_, err := config.RedisClient.Ping(context.Background()).Result()
@@ -55,6 +60,7 @@ func NewKeyDistributor(config Config) (*KeyDistributor, error) {
 	kd := &KeyDistributor{
 		redis:             config.RedisClient,
 		logger:            config.Logger,
+		pattern:           config.Pattern,
 		processID:         config.ProcessID,
 		processesKey:      config.Prefix + ":processes:",
 		lastUpdateKey:     config.Prefix + ":last_update",
@@ -67,7 +73,7 @@ func NewKeyDistributor(config Config) (*KeyDistributor, error) {
 
 	// Start periodic check for expired processes
 	go kd.checkExpiredProcesses(context.Background())
-
+	go kd.WatchNewKeys(context.Background())
 	return kd, nil
 }
 
@@ -142,6 +148,35 @@ func (kd *KeyDistributor) Register(ctx context.Context) error {
 	return nil
 }
 
+func (kd *KeyDistributor) ConsumeRebalance(ctx context.Context) chan struct{} {
+	signal := make(chan struct{})
+	pubsub := kd.redis.Subscribe(ctx, kd.rebalanceChannel)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				pubsub.Close()
+				close(signal)
+				return
+			default:
+				msg, err := pubsub.ReceiveMessage(ctx)
+				if err != nil {
+					if ctx.Err() != nil {
+						return // Context canceled
+					}
+					continue
+				}
+				if msg.Payload == "rebalance" {
+					signal <- struct{}{}
+				}
+			}
+		}
+	}()
+
+	return signal
+}
+
 // Deregister removes the sub-program from the system
 func (kd *KeyDistributor) Deregister(ctx context.Context) error {
 	err := kd.redis.Del(ctx, kd.processesKey+kd.processID).Err()
@@ -196,93 +231,8 @@ func (kd *KeyDistributor) IsStable(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// WaitUntilStable waits until the system is stable or the timeout is reached
-func (kd *KeyDistributor) WaitUntilStable(ctx context.Context, timeout time.Duration) (bool, error) {
-	start := time.Now()
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return false, ctx.Err()
-		case <-time.After(timeout - time.Since(start)):
-			return false, fmt.Errorf("timeout waiting for system to stabilize")
-		case <-ticker.C:
-			isStable, err := kd.IsStable(ctx)
-			if err != nil {
-				return false, fmt.Errorf("failed to check stability: %v", err)
-			}
-			if isStable {
-				return true, nil
-			}
-		}
-	}
-}
-
-// SubscribeRebalance subscribes to rebalance events and calls the callback only when a rebalance occurs and system is stable
-func (kd *KeyDistributor) SubscribeRebalance(ctx context.Context, pattern string, callback func(keys []string, err error)) {
-	pubsub := kd.redis.Subscribe(ctx, kd.rebalanceChannel)
-	defer pubsub.Close()
-
-	// Start monitoring new keys for the given pattern
-	go kd.monitorNewKeys(ctx, pattern)
-
-	// Channel to signal rebalance events
-	rebalanceCh := make(chan struct{}, 1)
-
-	// Goroutine to receive rebalance messages
-	go func() {
-		for {
-			msg, err := pubsub.ReceiveMessage(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					return // Context canceled
-				}
-				continue
-			}
-			if msg.Payload == "rebalance" {
-				select {
-				case rebalanceCh <- struct{}{}:
-				default:
-					// Channel already has a signal, skip
-				}
-			}
-		}
-	}()
-
-	// Main loop to process rebalance events
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-rebalanceCh:
-			// Rebalance event received, check if system is stable
-			isStable, err := kd.IsStable(ctx)
-			if err != nil {
-				callback(nil, fmt.Errorf("failed to check stability: %v", err))
-				continue
-			}
-			if !isStable {
-				// System not stable, wait until stable or context canceled
-				stable, err := kd.WaitUntilStable(ctx, kd.stabilityDuration*2)
-				if err != nil {
-					callback(nil, fmt.Errorf("failed to wait for stability: %v", err))
-					continue
-				}
-				if !stable {
-					continue // Timeout or canceled, skip callback
-				}
-			}
-			// System is stable, get keys and call callback
-			keys, err := kd.GetMyKeys(ctx, pattern)
-			callback(keys, err)
-		}
-	}
-}
-
-// monitorNewKeys monitors for new keys matching the pattern and publishes rebalance events
-func (kd *KeyDistributor) monitorNewKeys(ctx context.Context, pattern string) {
+// WatchNewKeys monitors for new keys matching the pattern and publishes rebalance events
+func (kd *KeyDistributor) WatchNewKeys(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -292,7 +242,7 @@ func (kd *KeyDistributor) monitorNewKeys(ctx context.Context, pattern string) {
 			return
 		case <-ticker.C:
 			// Get current keys
-			currentKeys, err := kd.GetKeys(ctx, pattern)
+			currentKeys, err := kd.GetKeys(ctx, kd.pattern)
 			if err != nil {
 				continue
 			}
@@ -319,44 +269,6 @@ func (kd *KeyDistributor) monitorNewKeys(ctx context.Context, pattern string) {
 	}
 }
 
-// CheckAndUpdate checks for expired processes
-func (kd *KeyDistributor) CheckAndUpdate(ctx context.Context) error {
-	// Delegate to checkExpiredProcesses logic
-	processKeys, err := kd.redis.Keys(ctx, kd.processesKey+"*").Result()
-	if err != nil {
-		return fmt.Errorf("failed to get process keys: %v", err)
-	}
-	var currentProcesses []string
-	for _, key := range processKeys {
-		if strings.HasPrefix(key, kd.processesKey) {
-			processID := strings.TrimPrefix(key, kd.processesKey)
-			currentProcesses = append(currentProcesses, processID)
-		}
-	}
-
-	// Compare with last known processes
-	sort.Strings(currentProcesses)
-	sort.Strings(kd.lastProcesses)
-	if !kd.equalSlices(currentProcesses, kd.lastProcesses) {
-		// Update last update timestamp
-		err = kd.redis.Set(ctx, kd.lastUpdateKey, time.Now().Unix(), 0).Err()
-		if err != nil {
-			return fmt.Errorf("failed to update last update timestamp: %v", err)
-		}
-
-		// Publish rebalance event
-		err = kd.redis.Publish(ctx, kd.rebalanceChannel, "rebalance").Err()
-		if err != nil {
-			return fmt.Errorf("failed to publish rebalance event: %v", err)
-		}
-
-		// Update last known processes
-		kd.lastProcesses = currentProcesses
-	}
-
-	return nil
-}
-
 // equalSlices compares two sorted string slices
 func (kd *KeyDistributor) equalSlices(a, b []string) bool {
 	if len(a) != len(b) {
@@ -371,10 +283,10 @@ func (kd *KeyDistributor) equalSlices(a, b []string) bool {
 }
 
 // GetMyKeys returns the keys assigned to this sub-program using round-robin
-func (kd *KeyDistributor) GetMyKeys(ctx context.Context, pattern string) ([]string, error) {
+func (kd *KeyDistributor) GetMyKeys(ctx context.Context) ([]string, error) {
 
 	// Get all keys from Redis
-	keys, err := kd.GetKeys(ctx, pattern)
+	keys, err := kd.GetKeys(ctx, kd.pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -448,6 +360,7 @@ func (kd *KeyDistributor) GetKeys(ctx context.Context, pattern string) ([]string
 }
 
 // Close closes the Redis connection
-func (kd *KeyDistributor) Close(ctx context.Context) error {
+func (kd *KeyDistributor) Close() error {
+	kd.Deregister(context.Background())
 	return kd.redis.Close()
 }

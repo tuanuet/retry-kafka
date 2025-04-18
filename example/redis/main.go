@@ -38,7 +38,7 @@ func main() {
 		"test_consumer",
 		&UserEvent{},
 		[]string{"localhost:6379"},
-		redis.WithRetries(nil),
+		//redis.WithRetries(nil),
 		//redis.WithUnOrder(true),
 	)
 
@@ -51,8 +51,8 @@ func main() {
 		//u := evt.(*UserEvent)
 		//fmt.Println(u)
 		time.Sleep(2000 * time.Millisecond)
-		return nil
-		//return fmt.Errorf("ddd")
+		//return nil
+		return fmt.Errorf("ddd")
 	}); err != nil {
 		log.Fatal(err.Error())
 	}
