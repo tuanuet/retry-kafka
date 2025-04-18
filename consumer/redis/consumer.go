@@ -180,7 +180,7 @@ func (r *rConsumer) Consume(ctx context.Context, handlerFunc consumer.HandleFunc
 }
 
 func (r *rConsumer) processStream(ctx context.Context, stream string, handle *redisSubscriberHandler) error {
-	keysCh, err := r.getKeyDistributor(ctx, stream)
+	keysCh, closeChan, err := r.getKeyDistributor(ctx, stream)
 	if err != nil {
 		return fmt.Errorf("error when get key distributor: %w", err)
 	}
@@ -192,25 +192,20 @@ func (r *rConsumer) processStream(ctx context.Context, stream string, handle *re
 	var wg sync.WaitGroup
 
 	go func() {
-		isFirst := true
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-closeChan:
+				// Cancel existing goroutines
+				cancelPartition()
+				wg.Wait() // Wait for all goroutines to finish
+				ctxPartition, cancelPartition = context.WithCancel(ctx)
+
 			case keys, ok := <-keysCh:
 				if !ok {
 					return
 				}
-
-				if !isFirst {
-					r.logger.Printf("close func")
-					// Cancel existing goroutines
-					cancelPartition()
-					wg.Wait() // Wait for all goroutines to finish
-					ctxPartition, cancelPartition = context.WithCancel(ctx)
-				}
-
-				isFirst = false
 
 				r.logger.Printf("Starting new goroutines for keys: %v\n", keys)
 				// Start a goroutine for each key
@@ -242,77 +237,86 @@ func (r *rConsumer) processStream(ctx context.Context, stream string, handle *re
 	return nil
 }
 
-func (r *rConsumer) getKeyDistributor(ctx context.Context, stream string) (chan []string, error) {
+func (r *rConsumer) getKeyDistributor(ctx context.Context, stream string) (chan []string, chan struct{}, error) {
 	pattern := fmt.Sprintf("%s:*", stream)
 	keyDistributorPrefix := fmt.Sprintf("%s_%s", r.subscriberName, stream)
 	config := Config{
 		RedisClient:       r.client,
+		Pattern:           pattern,
 		ProcessID:         r.consumerFullName,
 		Prefix:            keyDistributorPrefix,
 		TTL:               10 * time.Second,
-		StabilityDuration: 2 * time.Second,
+		StabilityDuration: 5 * time.Second,
 		Logger:            r.logger,
 	}
 
 	// Channel to send new keys from SubscribeRebalance
 	keysCh := make(chan []string, 1)
+	closeChan := make(chan struct{})
 
 	// Initialize distributor
 	distributor, err := NewKeyDistributor(config)
 	if err != nil {
-		return keysCh, fmt.Errorf("error to initialize distributor: %w", err)
+		return keysCh, closeChan, fmt.Errorf("error to initialize distributor: %w", err)
 	}
+
+	rebalanceSignal := distributor.ConsumeRebalance(ctx)
 
 	if r.unOrder {
 		partitions, err := distributor.GetKeys(ctx, pattern)
 		if err != nil {
-			return keysCh, err
+			return keysCh, closeChan, err
 		}
 		keysCh <- partitions
-		return keysCh, nil
+		return keysCh, closeChan, nil
 	}
 
 	// Register the sub-program
 	if err = distributor.Register(ctx); err != nil {
-		return keysCh, fmt.Errorf("error to register distributor: %w", err)
+		return keysCh, closeChan, fmt.Errorf("error to register distributor: %w", err)
 	}
-
-	r.logger.Printf("Waiting for system to stabilize for %s... \n", r.consumerFullName)
-	stable, err := distributor.WaitUntilStable(ctx, 30*time.Second)
-	if err != nil {
-		return keysCh, fmt.Errorf("error waiting for stability for %s: %w", r.consumerFullName, err)
-	}
-	if !stable {
-		return keysCh, fmt.Errorf("error System did not stabilize within timeout for %s", r.consumerFullName)
-	}
-
-	r.logger.Printf("System is stable for %s!\n", r.consumerFullName)
-
-	//ks, err := distributor.GetMyKeys(ctx, pattern)
-	//if err != nil {
-	//	return keysCh, fmt.Errorf("error to get keys for stream %s: %v", stream, err)
-	//}
-	//r.logger.Printf("partitions: %v\n", ks)
-	//keysCh <- ks
 
 	go func() {
+		ttl := time.NewTicker(config.TTL / 2)
+		stableCheck := time.NewTicker(time.Second)
+		isRebalance := false
 		for {
-			if err = distributor.KeepAlive(ctx); err != nil {
-				r.logger.Printf("Keep-alive failed: %v", err)
+			select {
+			case <-rebalanceSignal:
+				closeChan <- struct{}{}
+				isRebalance = true
+			case <-stableCheck.C:
+				if !isRebalance {
+					continue
+				}
+				stable, err := distributor.IsStable(ctx)
+				if err != nil {
+					r.logger.Printf("error when check stable %v\n", err)
+					continue
+				}
+				if !stable {
+					continue
+				}
+
+				if isRebalance {
+					ks, err := distributor.GetMyKeys(ctx)
+					if err != nil {
+						continue
+					}
+					keysCh <- ks
+					isRebalance = false
+				}
+
+			case <-ttl.C:
+				if err = distributor.KeepAlive(ctx); err != nil {
+					r.logger.Printf("Keep-alive failed: %v", err)
+				}
 			}
-			time.Sleep(config.TTL / 2)
+
 		}
 	}()
 
-	go distributor.SubscribeRebalance(ctx, pattern, func(keys []string, err error) {
-		fmt.Printf("Listening for keys: %v\n", keys)
-		if err != nil {
-			fmt.Printf("Failed to get keys on rebalance: %v\n", err)
-			return
-		}
-		keysCh <- keys
-	})
-	return keysCh, nil
+	return keysCh, closeChan, nil
 }
 
 func (r *rConsumer) processPartition(ctx context.Context, partitionStream string, handleFunc *redisSubscriberHandler) error {
