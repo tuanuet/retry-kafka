@@ -29,7 +29,7 @@ func newSyncPublisher(brokers []string) (*syncPublisher, error) {
 func (ap *syncPublisher) SendMessage(ctx context.Context, msg *ProducerMessage) error {
 	msg.Timestamp = time.Now()
 	_, err := ap.client.XAdd(ctx, &redis.XAddArgs{
-		Stream: msg.Stream,
+		Stream: fmt.Sprintf("%s:%d", msg.Stream, msg.Partition),
 		Values: msg.ToValues(),
 	}).Result()
 	return err

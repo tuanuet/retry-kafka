@@ -38,7 +38,8 @@ func main() {
 		"test_consumer",
 		&UserEvent{},
 		[]string{"localhost:6379"},
-		//redis.WithRetries(nil),
+		redis.WithRetries(nil),
+		//redis.WithUnOrder(true),
 	)
 
 	signals := make(chan os.Signal, 1)
@@ -49,8 +50,9 @@ func main() {
 	if err := c.Consume(ctx, func(evt retriable.Event, headers []*retriable.Header) error {
 		//u := evt.(*UserEvent)
 		//fmt.Println(u)
-		time.Sleep(500 * time.Millisecond)
-		return fmt.Errorf("err")
+		time.Sleep(2000 * time.Millisecond)
+		return nil
+		//return fmt.Errorf("ddd")
 	}); err != nil {
 		log.Fatal(err.Error())
 	}

@@ -12,6 +12,7 @@ type ProducerMessage struct {
 	Value     []byte
 	Key       string
 	Stream    string
+	Partition uint64
 	Timestamp time.Time
 }
 

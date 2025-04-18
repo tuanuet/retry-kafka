@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"github.com/cespare/xxhash"
 	"github.com/tuanuet/retry-kafka/marshaller"
 	"github.com/tuanuet/retry-kafka/producer"
 	"github.com/tuanuet/retry-kafka/retriable"
@@ -18,10 +19,13 @@ func WithMarshaller(mr marshaller.Marshaller) Option {
 	}
 }
 
-// WithAsync can write to kafka by async Publisher
-func WithAsync() Option {
+// WithPartitionNum can write to partition
+func WithPartitionNum(num int32) Option {
 	return func(so *rProducer) {
-		so.async = true
+		if num <= 0 {
+			return
+		}
+		so.partitionNum = num
 	}
 }
 
@@ -37,7 +41,8 @@ type rProducer struct {
 	brokers  []string
 	producer Publisher
 
-	marshaller marshaller.Marshaller
+	marshaller   marshaller.Marshaller
+	partitionNum int32
 }
 
 // NewProducer initial kafka Publisher
@@ -48,7 +53,8 @@ func NewProducer(event retriable.Event, brokers []string, options ...Option) *rP
 		async:   false,
 		topic:   retriable.NewTopic(retriable.NormalizeMainTopicName(event)),
 		// default JSONMarshaler
-		marshaller: marshaller.DefaultMarshaller,
+		marshaller:   marshaller.DefaultMarshaller,
+		partitionNum: 1,
 	}
 
 	for _, opt := range options {
@@ -79,10 +85,13 @@ func (k *rProducer) SendMessage(event retriable.Event, headers []*retriable.Head
 		opt(so)
 	}
 
+	partition := xxhash.Sum64([]byte(event.GetPartitionValue())) % uint64(k.partitionNum)
+
 	newMsg := &ProducerMessage{
-		Stream: so.Topic.Name,
-		Key:    event.GetPartitionValue(),
-		Value:  body,
+		Stream:    so.Topic.Name,
+		Key:       event.GetPartitionValue(),
+		Value:     body,
+		Partition: partition,
 	}
 	/**
 	|-------------------------------------------------------------------------
@@ -109,7 +118,6 @@ func (k *rProducer) Close() error {
 }
 
 func (k *rProducer) initProducer() error {
-
 	var err error
 	k.producer, err = newSyncPublisher(k.brokers)
 	return err
