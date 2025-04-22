@@ -43,6 +43,13 @@ func WithLogger(logger Logger) Option {
 	}
 }
 
+// WithMaxProcessDuration ...
+func WithMaxProcessDuration(duration time.Duration) Option {
+	return func(opt *rConsumer) {
+		opt.MaxProcessingTime = duration
+	}
+}
+
 // WithEnableRetry ...
 func WithEnableRetry(enable bool) Option {
 	return func(opt *rConsumer) {
@@ -85,8 +92,9 @@ type rConsumer struct {
 	enableRetry  bool
 	retryConfigs []consumer.RetryOption
 
-	enableDlq bool
-	unOrder   bool
+	enableDlq         bool
+	unOrder           bool
+	MaxProcessingTime time.Duration
 
 	marshaller marshaller.Marshaller
 	logger     Logger
@@ -107,6 +115,7 @@ func NewConsumer(subscriberName string, event retriable.Event, brokers []string,
 			{Pending: 1 * time.Minute},
 			{Pending: 10 * time.Minute},
 		},
+		MaxProcessingTime: 10 * time.Minute,
 		client: redis.NewClient(&redis.Options{
 			Addr: brokers[0],
 		}),
@@ -343,11 +352,57 @@ func (r *rConsumer) processPartition(ctx context.Context, partitionStream string
 		return fmt.Errorf("error creating partitionStream: %v", err)
 	}
 
+	// xpending process
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// Read messages from all main streams
+				args := &redis.XPendingExtArgs{
+					Stream:   partitionStream,
+					Group:    r.subscriberName,
+					Idle:     r.MaxProcessingTime,
+					Start:    "-",
+					End:      "+",
+					Count:    1,
+					Consumer: r.consumerFullName,
+				}
+
+				results, err := r.client.XPendingExt(ctx, args).Result()
+				if err != nil {
+					r.logger.Printf("Error reading streams: %v", err)
+					continue
+				}
+
+				if len(results) == 0 {
+					continue
+				}
+				r.logger.Printf("Pending messages: %d\n", len(results))
+				xstream, err := r.PullXStream(ctx, partitionStream, results[0].ID)
+				if err != nil {
+					r.logger.Printf("error when PullXStream: %v\n", err)
+					continue
+				}
+
+				if err = handleFunc.ConsumeClaim(ctx, r, []redis.XStream{xstream}); err != nil {
+					r.logger.Printf("error when ConsumeClaim: %v\n", err)
+					continue
+				}
+			}
+		}
+	}()
+
+	// main process
 	for {
 		select {
 		case <-ctx.Done():
 			r.logger.Printf("Shutting down consumer %s...\n", partitionStream)
 			return nil
+
 		default:
 			// Read messages from all main streams
 			args := &redis.XReadGroupArgs{
@@ -372,6 +427,20 @@ func (r *rConsumer) processPartition(ctx context.Context, partitionStream string
 		}
 	}
 }
+
+func (r *rConsumer) PullXStream(ctx context.Context, partitionStream string, id string) (redis.XStream, error) {
+	// Read messages from all main streams
+	messages, err := r.client.XRange(ctx, partitionStream, id, id).Result()
+	if err != nil {
+		return redis.XStream{}, err
+	}
+
+	return redis.XStream{
+		Stream:   partitionStream,
+		Messages: messages,
+	}, nil
+}
+
 func (r *rConsumer) Ack(ctx context.Context, stream, msgID string) error {
 	_, err := r.client.XAck(ctx, stream, r.subscriberName, msgID).Result()
 	return err

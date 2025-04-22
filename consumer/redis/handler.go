@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/redis/go-redis/v9"
-	"github.com/tuanuet/retry-kafka/consumer"
 	"reflect"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+	"github.com/tuanuet/retry-kafka/consumer"
 	"github.com/tuanuet/retry-kafka/retriable"
 )
 
