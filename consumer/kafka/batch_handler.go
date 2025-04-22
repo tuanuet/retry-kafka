@@ -3,13 +3,12 @@ package kafka
 import (
 	"errors"
 	"fmt"
-	"github.com/tuanuet/retry-kafka/consumer"
 	"log"
 	"reflect"
-	"sort"
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/tuanuet/retry-kafka/consumer"
 	"github.com/tuanuet/retry-kafka/retriable"
 )
 
@@ -169,74 +168,59 @@ func (h *kafkaSubscriberBatchHandler) handleMessages(msgs []retriable.Message) (
 	type destWithError struct {
 		dest retriable.Event
 		err  error
-		idx  int
 	}
-	destMap := make(map[int]destWithError)
+
+	// Preallocate for efficiency
+	dests := make([]retriable.Event, 0, len(msgs))
+	errIdxMap := make([]int, 0)
+	errSlice := make([]error, len(msgs))
+
+	// Unmarshal all messages, track errors and successes
 	for i, msg := range msgs {
 		evt, err := msg.Unmarshal(h.evtType)
-		destMap[i] = destWithError{
-			dest: evt,
-			err:  err,
-			idx:  i,
-		}
-	}
-
-	destSuccesses := make([]destWithError, 0)
-	for _, dwe := range destMap {
-		if dwe.err != nil {
+		if err != nil {
+			errSlice[i] = err
 			continue
 		}
-		destSuccesses = append(destSuccesses, dwe)
+		dests = append(dests, evt)
+		errSlice[i] = nil
 	}
 
-	dests := make([]retriable.Event, 0)
-	for _, d := range destSuccesses {
-		dests = append(dests, d.dest)
-	}
-
-	if len(dests) != 0 {
+	if len(dests) > 0 {
 		err := h.process(dests, nil)
 		if err != nil {
-			// handler error here
-			errIndexes := make([]int, 0)
 			berr, castOk := err.(*retriable.ErrorBatchHandler)
-
 			if !castOk {
-				// return all virtual message index
-				for i, _ := range dests {
-					errIndexes = append(errIndexes, i)
+				// Mark all as error
+				for i := range dests {
+					errIdxMap = append(errIdxMap, i)
 				}
 			} else {
-				// return virtual indexes
-				for _, index := range berr.Indexes {
-					errIndexes = append(errIndexes, index)
+				for _, idx := range berr.Indexes {
+					errIdxMap = append(errIdxMap, idx)
 				}
 			}
-			// update for destMap
-			for _, vIdx := range errIndexes {
-				trueErrorIdx := destSuccesses[vIdx].idx
-				dest := destMap[trueErrorIdx]
-				dest.err = errors.New("process partial error")
-				destMap[trueErrorIdx] = dest
+			// Map errors back to original positions
+			j := 0
+			for i := 0; i < len(msgs) && j < len(errIdxMap); i++ {
+				if errSlice[i] == nil {
+					if contains(errIdxMap, j) {
+						errSlice[i] = errors.New("process partial error")
+						j++
+					}
+				}
 			}
 		}
 	}
 
-	// return full error here
-	// Wrong order
-	keys := make([]int, 0, len(destMap))
-	for idx := range destMap {
-		keys = append(keys, idx)
-	}
-	sort.Ints(keys)
+	return errSlice
+}
 
-	for _, idx := range keys {
-		errs = append(errs, destMap[idx].err)
+func contains(arr []int, val int) bool {
+	for _, v := range arr {
+		if v == val {
+			return true
+		}
 	}
-	// return all error by each message
-	if len(errs) != 0 {
-		return
-	}
-
-	return nil
+	return false
 }
