@@ -27,8 +27,8 @@ func WithBatchFlush(size int32, timeFlush time.Duration) Option {
 	}
 }
 
-// WithMarshaler can overwrite marshaller want to send
-func WithMarshaler(mr marshaller.Marshaller) Option {
+// WithMarshaller can overwrite marshaller want to send
+func WithMarshaller(mr marshaller.Marshaller) Option {
 	return func(k *kConsumer) {
 		k.marshaller = mr
 	}

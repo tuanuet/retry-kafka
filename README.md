@@ -40,90 +40,117 @@ Hệ thống này cung cấp cơ chế gửi và xử lý message với khả n�
 - **Producer**: Gửi message vào Kafka hoặc Redis.
 - **Consumer**: Nhận message, xử lý, retry nếu lỗi, gửi vào Dead Queue nếu không thể xử lý.
 
-## Hướng dẫn sử dụng
+## Hướng dẫn sử dụng nhanh
 
-### 1. Cấu hình Producer
-
-#### Kafka Producer
+### 1. Định nghĩa Event
 
 ```go
-import "github.com/tuanuet/retry-kafka/producer/kafka"
+type MyEvent struct {
+    ID   int
+    Name string
+}
 
-producer := kafka.NewProducer(kafka.Config{
-Brokers: []string{"localhost:9092"},
-Topic:   "my-topic",
-})
-err := producer.SendMessage(myEvent)
+func (e MyEvent) GetTopicName() string        { return "my-topic" }
+func (e MyEvent) GetPartitionValue() string   { return fmt.Sprintf("%d", e.ID) }
 ```
 
-#### Redis Producer
+### 2. Producer (Kafka/Redis)
 
 ```go
-import "github.com/tuanuet/retry-kafka/producer/redis"
+import (
+    "github.com/tuanuet/retry-kafka/producer/kafka"
+    "github.com/tuanuet/retry-kafka/producer/redis"
+)
 
+// Kafka
+producer := kafka.NewProducer(kafka.Config{
+    Brokers: []string{"localhost:9092"},
+    Topic:   "my-topic",
+})
+err := producer.SendMessage(MyEvent{ID: 1, Name: "foo"})
+
+// Redis
 producer := redis.NewProducer(redis.Config{
-    Addr: "localhost:6379",
+    Addr:  "localhost:6379",
     Topic: "my-redis-stream",
 })
-err := producer.SendMessage(myEvent)
+err := producer.SendMessage(MyEvent{ID: 2, Name: "bar"})
 ```
 
-### 2. Cấu hình Consumer
-
-#### Kafka Consumer
+### 3. Consumer (Kafka/Redis)
 
 ```go
-import "github.com/tuanuet/retry-kafka/consumer/kafka"
+import (
+    "context"
+    "github.com/tuanuet/retry-kafka/consumer/kafka"
+    "github.com/tuanuet/retry-kafka/consumer/redis"
+)
 
+// Kafka
 consumer := kafka.NewConsumer(kafka.Config{
     Brokers: []string{"localhost:9092"},
     Topic:   "my-topic",
     GroupID: "my-group",
 })
-consumer.Consume(ctx, handleFunc)
-```
+err := consumer.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
+    myEvt := evt.(*MyEvent)
+    // Xử lý logic ở đây
+    return nil // hoặc return error để retry
+})
 
-#### Redis Consumer
-
-```go
-import "github.com/tuanuet/retry-kafka/consumer/redis"
-
+// Redis
 consumer := redis.NewConsumer(redis.Config{
-    Addr: "localhost:6379",
+    Addr:  "localhost:6379",
     Topic: "my-redis-stream",
 })
-consumer.Consume(ctx, handleFunc)
+err := consumer.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
+    myEvt := evt.(*MyEvent)
+    // Xử lý logic ở đây
+    return nil
+})
 ```
 
-### Ví dụ định nghĩa một Event
+### 4. Batch Consume (nếu muốn)
 
 ```go
-type MyEvent struct {
-ID   int
-Name string
-}
-
-// MyEvent cần implement interface retriable.Event
-func (e MyEvent) GetTopicName() string {
-return "my-topic"
-}
-
-func (e MyEvent) GetPartitionValue() string {
-// Phân phối theo ID
-return fmt.Sprintf("%d", e.ID)
-}
+err := consumer.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
+    for _, evt := range evts {
+        myEvt := evt.(*MyEvent)
+        // Xử lý từng event
+    }
+    return nil
+})
 ```
 
-### 3. Retry & Dead Queue
+### 5. Sử dụng WithMarshaller cho Producer & Consumer (tuỳ chọn)
 
-- Khi xử lý lỗi, message sẽ được retry tự động.
-- Nếu vượt quá số lần retry, message sẽ được chuyển vào Dead Queue (DQL) để xử lý sau.
+Bạn có thể truyền custom marshaller (ví dụ: JSON, protobuf,...) khi khởi tạo Producer hoặc Consumer để tuỳ biến serialization/deserialization. Ví dụ với Kafka:
+
+```go
+import (
+    "github.com/tuanuet/retry-kafka/producer/kafka"
+    "github.com/tuanuet/retry-kafka/consumer/kafka"
+    "github.com/tuanuet/retry-kafka/marshaller"
+)
+
+producer := kafka.NewProducer(
+    kafka.Config{...},
+    kafka.WithMarshaller(marshaller.NewJSONMarshaller()),
+)
+
+consumer := kafka.NewConsumer(
+    kafka.Config{...},
+    kafka.WithMarshaller(marshaller.NewJSONMarshaller()),
+)
+```
+
+> **Lưu ý:** Redis cũng hỗ trợ WithMarshaller với cách dùng tương tự.
+> Nên dùng cùng loại marshaller cho cả Producer và Consumer để tránh lỗi giải mã dữ liệu.
 
 ## Khi nào nên dùng Redis, khi nào dùng Kafka?
 
 - **Kafka**: Sử dụng khi cần throughput lớn, đảm bảo thứ tự, phân tán cao, lưu trữ lâu dài.
 - **Redis**: Phù hợp cho các hệ thống nhỏ, latency thấp, hoặc khi bạn đã có Redis sẵn.
-
 
 ## Đóng góp & mở rộng
 
