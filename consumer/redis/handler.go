@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/tuanuet/retry-kafka/consumer"
 	"reflect"
@@ -31,38 +32,44 @@ func newRedisSubscriberHandler(evtType reflect.Type, subscriber *rConsumer, hand
 // ConsumeClaim implements the method of interface.
 func (h *redisSubscriberHandler) ConsumeClaim(ctx context.Context, r *rConsumer, results []redis.XStream) error {
 	for _, result := range results {
-		stream := result.Stream
-		msgs := result.Messages
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			stream := result.Stream
+			msgs := result.Messages
 
-		for _, msg := range msgs {
-			newMsg := retriable.NewRedisMessage(msg, stream, h.subscriber.marshaller)
-			topic := h.subscriber.getTopic(newMsg.GetTopicName())
-			since := newMsg.GetSinceTime()
+			for _, msg := range msgs {
+				newMsg := retriable.NewRedisMessage(msg, stream, h.subscriber.marshaller)
+				topic := h.subscriber.getTopic(newMsg.GetTopicName())
+				since := newMsg.GetSinceTime()
 
-			if topic.Pending-since > time.Millisecond*100 {
-				// pause consume
-				time.Sleep(topic.Pending - since)
-			}
-
-			if err := h.handleMessage(newMsg); err != nil {
-				// Append more header
-				newMsg.SetHeaderByKey([]byte("_retry_error"), []byte(err.Error()))
-
-				if ok := errors.Is(err, retriable.ErrorWithoutRetry); ok {
-					if err = h.subscriber.sendDQL(newMsg); err != nil {
-						return err
-					}
-				} else if err = h.subscriber.sendRetry(newMsg); err != nil {
-					return err
+				if topic.Pending-since > time.Millisecond*100 {
+					// pause consume
+					time.Sleep(topic.Pending - since)
 				}
-			}
 
-			// Acknowledge the message in the correct stream
-			if err := r.Ack(ctx, stream, msg.ID); err != nil {
-				return err
+				if err := h.handleMessage(newMsg); err != nil {
+					// Append more header
+					newMsg.SetHeaderByKey([]byte("_retry_error"), []byte(err.Error()))
+
+					if ok := errors.Is(err, retriable.ErrorWithoutRetry); ok {
+						if err = h.subscriber.sendDLQ(newMsg); err != nil {
+							return fmt.Errorf("error send msg to dlq: %w", err)
+						}
+					} else if err = h.subscriber.sendRetry(newMsg); err != nil {
+						return fmt.Errorf("error sending message to redis for topic %s: %w", newMsg.GetTopicName(), err)
+					}
+				}
+
+				// Acknowledge the message in the correct stream
+				if err := r.Ack(context.Background(), stream, msg.ID); err != nil {
+					return fmt.Errorf("error when ack: %w", err)
+				}
 			}
 		}
 	}
+
 	return nil
 }
 

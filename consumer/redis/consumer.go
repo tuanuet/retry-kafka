@@ -11,6 +11,8 @@ import (
 	redisp "github.com/tuanuet/retry-kafka/producer/redis"
 	"log"
 	"reflect"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -20,16 +22,8 @@ import (
 // Option ...
 type Option func(*rConsumer)
 
-// WithBatchFlush ...
-func WithBatchFlush(size int32, timeFlush time.Duration) Option {
-	return func(consumer *rConsumer) {
-		consumer.batchFlushConf.size = size
-		consumer.batchFlushConf.duration = timeFlush
-	}
-}
-
-// WithMarshaler can overwrite marshaller want to send
-func WithMarshaler(mr marshaller.Marshaller) Option {
+// WithMarshaller can overwrite marshaller want to send
+func WithMarshaller(mr marshaller.Marshaller) Option {
 	return func(k *rConsumer) {
 		k.marshaller = mr
 	}
@@ -39,13 +33,6 @@ func WithMarshaler(mr marshaller.Marshaller) Option {
 func WithRetries(opts []consumer.RetryOption) Option {
 	return func(k *rConsumer) {
 		k.retryConfigs = opts
-	}
-}
-
-// WithLongProcessing ...
-func WithLongProcessing(isLongProcessing bool) Option {
-	return func(opt *rConsumer) {
-		opt.isLongProcessing = isLongProcessing
 	}
 }
 
@@ -70,10 +57,18 @@ func WithEnableDlq(enable bool) Option {
 	}
 }
 
+// WithUnOrder M:N subscribe
+func WithUnOrder(unOrder bool) Option {
+	return func(opt *rConsumer) {
+		opt.unOrder = unOrder
+	}
+}
+
 type Logger = sarama.StdLogger
 
 type rConsumer struct {
-	subscriberName string
+	subscriberName   string
+	consumerFullName string
 
 	event  retriable.Event
 	client *redis.Client
@@ -91,12 +86,7 @@ type rConsumer struct {
 	retryConfigs []consumer.RetryOption
 
 	enableDlq bool
-
-	batchFlushConf struct {
-		size     int32
-		duration time.Duration
-	}
-	isLongProcessing bool
+	unOrder   bool
 
 	marshaller marshaller.Marshaller
 	logger     Logger
@@ -136,6 +126,7 @@ func NewConsumer(subscriberName string, event retriable.Event, brokers []string,
 	mainTopic := retriable.NewTopic(mainTopicName)
 	c.mainTopic = mainTopic
 	c.nameToTopics[mainTopic.Name] = mainTopic
+	c.consumerFullName = fmt.Sprintf("%s_%s", c.subscriberName, uuid.New().String())
 
 	// Make retry-topic
 	if c.enableRetry {
@@ -173,51 +164,195 @@ func (r *rConsumer) Consume(ctx context.Context, handlerFunc consumer.HandleFunc
 		topicNames = append(topicNames, t.Name)
 	}
 
-	for _, mainStream := range topicNames {
-		_, err := r.client.XGroupCreateMkStream(ctx, mainStream, r.subscriberName, "0").Result()
-		if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
-			return fmt.Errorf("failed to create consumer group: %v", err)
-		}
-	}
-
 	handler := newRedisSubscriberHandler(reflect.TypeOf(r.event), r, handlerFunc)
 
 	// each stream is a goroutine
 	for _, stream := range topicNames {
 		go func(stream string) {
-			consumerName := fmt.Sprintf("%s_%s", r.subscriberName, uuid.New().String())
-			for {
-				select {
-				case <-ctx.Done():
-					r.logger.Println("Shutting down consumer...")
-					return
-				default:
-					// Read messages from all main streams
-					args := &redis.XReadGroupArgs{
-						Group:    r.subscriberName,
-						Consumer: consumerName,
-						Streams:  []string{stream, ">"},
-						Count:    1,
-						Block:    0,
-						NoAck:    false,
-					}
-					r.logger.Println("running read group", stream)
-					results, err := r.client.XReadGroup(ctx, args).Result()
-					if err != nil {
-						r.logger.Printf("Error reading streams: %v", err)
-						continue
-					}
-
-					if err = handler.ConsumeClaim(ctx, r, results); err != nil {
-						r.logger.Println("error when ConsumeClaim: %v", err)
-						continue
-					}
-				}
+			if err := r.processStream(ctx, stream, handler); err != nil {
+				r.logger.Printf("error when process stream %v\n", err)
 			}
 		}(stream)
+
 	}
 
 	return nil
+}
+
+func (r *rConsumer) processStream(ctx context.Context, stream string, handle *redisSubscriberHandler) error {
+	keysCh, closeChan, err := r.getKeyDistributor(ctx, stream)
+	if err != nil {
+		return fmt.Errorf("error when get key distributor: %w", err)
+	}
+
+	// Create new context for new goroutines
+	ctxPartition, cancelPartition := context.WithCancel(ctx)
+
+	// Manager goroutine to handle key goroutines
+	var wg sync.WaitGroup
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-closeChan:
+				// Cancel existing goroutines
+				cancelPartition()
+				wg.Wait() // Wait for all goroutines to finish
+				ctxPartition, cancelPartition = context.WithCancel(ctx)
+
+			case keys, ok := <-keysCh:
+				if !ok {
+					return
+				}
+
+				r.logger.Printf("Starting new goroutines for keys: %v\n", keys)
+				// Start a goroutine for each key
+				for _, partition := range keys {
+					wg.Add(1)
+					go func(partition string) {
+						defer wg.Done()
+						// Process key until context is canceled
+						for {
+							select {
+							case <-ctxPartition.Done():
+								return
+							default:
+								// Placeholder: Process key continuously
+								r.logger.Printf("Processing key %s\n", partition)
+
+								if err = r.processPartition(ctxPartition, partition, handle); err != nil {
+									r.logger.Printf("error processing partition %s: %v\n", partition, err)
+									return
+								}
+							}
+						}
+					}(partition)
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (r *rConsumer) getKeyDistributor(ctx context.Context, stream string) (chan []string, chan struct{}, error) {
+	pattern := fmt.Sprintf("%s:*", stream)
+	keyDistributorPrefix := fmt.Sprintf("%s_%s", r.subscriberName, stream)
+	config := Config{
+		RedisClient:       r.client,
+		Pattern:           pattern,
+		ProcessID:         r.consumerFullName,
+		Prefix:            keyDistributorPrefix,
+		TTL:               10 * time.Second,
+		StabilityDuration: 5 * time.Second,
+		Logger:            r.logger,
+	}
+
+	// Channel to send new keys from SubscribeRebalance
+	keysCh := make(chan []string, 1)
+	closeChan := make(chan struct{})
+
+	// Initialize distributor
+	distributor, err := NewKeyDistributor(config)
+	if err != nil {
+		return keysCh, closeChan, fmt.Errorf("error to initialize distributor: %w", err)
+	}
+
+	rebalanceSignal := distributor.ConsumeRebalance(ctx)
+
+	if r.unOrder {
+		partitions, err := distributor.GetKeys(ctx, pattern)
+		if err != nil {
+			return keysCh, closeChan, err
+		}
+		keysCh <- partitions
+		return keysCh, closeChan, nil
+	}
+
+	// Register the sub-program
+	if err = distributor.Register(ctx); err != nil {
+		return keysCh, closeChan, fmt.Errorf("error to register distributor: %w", err)
+	}
+
+	go func() {
+		ttl := time.NewTicker(config.TTL / 2)
+		stableCheck := time.NewTicker(time.Second)
+		isRebalance := false
+		for {
+			select {
+			case <-rebalanceSignal:
+				closeChan <- struct{}{}
+				isRebalance = true
+			case <-stableCheck.C:
+				if !isRebalance {
+					continue
+				}
+				stable, err := distributor.IsStable(ctx)
+				if err != nil {
+					r.logger.Printf("error when check stable %v\n", err)
+					continue
+				}
+				if !stable {
+					continue
+				}
+
+				if isRebalance {
+					ks, err := distributor.GetMyKeys(ctx)
+					if err != nil {
+						continue
+					}
+					keysCh <- ks
+					isRebalance = false
+				}
+
+			case <-ttl.C:
+				if err = distributor.KeepAlive(ctx); err != nil {
+					r.logger.Printf("Keep-alive failed: %v", err)
+				}
+			}
+
+		}
+	}()
+
+	return keysCh, closeChan, nil
+}
+
+func (r *rConsumer) processPartition(ctx context.Context, partitionStream string, handleFunc *redisSubscriberHandler) error {
+	_, err := r.client.XGroupCreateMkStream(ctx, partitionStream, r.subscriberName, "0").Result()
+	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+		return fmt.Errorf("error creating partitionStream: %v", err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			r.logger.Printf("Shutting down consumer %s...\n", partitionStream)
+			return nil
+		default:
+			// Read messages from all main streams
+			args := &redis.XReadGroupArgs{
+				Group:    r.subscriberName,
+				Consumer: r.consumerFullName,
+				Streams:  []string{partitionStream, ">"},
+				Count:    1,
+				Block:    0,
+				NoAck:    false,
+			}
+			//r.logger.Println("running read group", partitionStream)
+			results, err := r.client.XReadGroup(ctx, args).Result()
+			if err != nil {
+				r.logger.Printf("Error reading streams: %v", err)
+				continue
+			}
+
+			if err = handleFunc.ConsumeClaim(ctx, r, results); err != nil {
+				r.logger.Printf("error when ConsumeClaim: %v\n", err)
+				continue
+			}
+		}
+	}
 }
 func (r *rConsumer) Ack(ctx context.Context, stream, msgID string) error {
 	_, err := r.client.XAck(ctx, stream, r.subscriberName, msgID).Result()
@@ -237,12 +372,12 @@ func (r *rConsumer) BatchConsume(ctx context.Context, handlerFunc consumer.Batch
 // sendRetry Retry sends the message to retry topic
 func (r *rConsumer) sendRetry(msg retriable.Message) (err error) {
 	if !r.enableRetry {
-		return r.sendDQL(msg)
+		return r.sendDLQ(msg)
 	}
 
 	topic := r.getTopic(msg.GetTopicName())
 	if topic.Next == nil {
-		return r.sendDQL(msg)
+		return r.sendDLQ(msg)
 	}
 	var evt retriable.Event
 	evt, err = msg.Unmarshal(reflect.TypeOf(r.event))
@@ -253,8 +388,8 @@ func (r *rConsumer) sendRetry(msg retriable.Message) (err error) {
 	return
 }
 
-// sendDQL sends a message DLQ topic
-func (r *rConsumer) sendDQL(msg retriable.Message) (err error) {
+// sendDLQ sends a message DLQ topic
+func (r *rConsumer) sendDLQ(msg retriable.Message) (err error) {
 	if !r.enableDlq {
 		return
 	}
@@ -274,10 +409,10 @@ func (r *rConsumer) sendDQL(msg retriable.Message) (err error) {
 
 // getTopic returns the topic by given name.
 func (r *rConsumer) getTopic(name string) *retriable.Topic {
-	return r.nameToTopics[name]
+	last := strings.LastIndex(name, ":")
+	return r.nameToTopics[name[:last]]
 }
 
 func (r *rConsumer) Close() error {
-	// TODO: close consumer
-	return nil
+	return r.client.Close()
 }

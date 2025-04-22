@@ -28,9 +28,9 @@ func (u UserEvent) GetPartitionValue() string {
 }
 
 func main() {
-	publisher := redisp.NewProducer(&UserEvent{}, []string{"localhost:6379"})
+	publisher := redisp.NewProducer(&UserEvent{}, []string{"localhost:6379"}, redisp.WithPartitionNum(4))
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1000; i++ {
 		if err := publisher.SendMessage(&UserEvent{
 			User{
 				ID:   uint32(i),
