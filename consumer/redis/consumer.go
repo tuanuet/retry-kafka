@@ -237,6 +237,24 @@ func (r *rConsumer) processStream(ctx context.Context, stream string, handle *re
 	return nil
 }
 
+// getKeyDistributor creates a new KeyDistributor and initializes it with the given
+// pattern and stream. The returned channels are used to send new keys from
+// SubscribeRebalance and to signal when the distributor is closed. The returned
+// error is used to signal any errors that occur during initialization.
+//
+// The returned channels have the following behavior:
+//   - keysCh: receives new keys from SubscribeRebalance and sends them to the
+//     caller. The channel is closed when the distributor is closed.
+//   - closeChan: receives a signal when the distributor is closed. The channel
+//     is closed when the distributor is closed.
+//
+// The distributor will register the sub-program with Redis and start watching for
+// new keys. When new keys are received, they are sent to the caller through the
+// keysCh channel. If the distributor is closed, the closeChan channel is closed.
+//
+// If the unOrder flag is set, the distributor will return all keys from Redis
+// matching the given pattern and send them to the caller through the keysCh
+// channel. The closeChan channel is not used in this case.
 func (r *rConsumer) getKeyDistributor(ctx context.Context, stream string) (chan []string, chan struct{}, error) {
 	pattern := fmt.Sprintf("%s:*", stream)
 	keyDistributorPrefix := fmt.Sprintf("%s_%s", r.subscriberName, stream)
@@ -408,8 +426,13 @@ func (r *rConsumer) sendDLQ(msg retriable.Message) (err error) {
 }
 
 // getTopic returns the topic by given name.
+// The topic name is expected to be in the format "subscriberName:topicName".
+// The function returns the topic with the given name, or nil if no such topic exists.
 func (r *rConsumer) getTopic(name string) *retriable.Topic {
+	// Find the last occurrence of the colon character to split the topic name
+	// into the subscriber name and the topic name.
 	last := strings.LastIndex(name, ":")
+	// Return the topic with the given name.
 	return r.nameToTopics[name[:last]]
 }
 
