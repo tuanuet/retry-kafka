@@ -11,16 +11,6 @@ import (
 	"github.com/tuanuet/retry-kafka/marshaller"
 )
 
-type Message interface {
-	GetTopicName() string
-	GetHeaders() []*Header
-	GetSinceTime() time.Duration
-	GetHeaderByKey(key []byte) []byte
-	SetHeaderByKey(key []byte, val []byte)
-	GetRaw() interface{}
-	Unmarshal(evtType reflect.Type) (Event, error)
-}
-
 type RMessage struct {
 	msg        redis.XMessage
 	value      []byte
@@ -90,7 +80,6 @@ func (m *RMessage) GetHeaderByKey(key []byte) []byte {
 }
 
 func (m *RMessage) SetHeaderByKey(key []byte, val []byte) {
-	// TODO: set header for each type
 	m.headers = append(m.headers, &Header{Key: key, Value: val})
 }
 
