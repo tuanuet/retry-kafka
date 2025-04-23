@@ -1,48 +1,56 @@
 # retry-kafka
 
-## Kiến trúc Retry & Dead Letter Queue (DLQ)
+## Introduction
 
-Hệ thống sử dụng cơ chế **retry** và **DLQ** để đảm bảo không mất dữ liệu và tăng độ tin cậy:
+**retry-kafka** is a flexible, high-reliability message processing library for Go, designed to make robust event-driven architectures easy. 
 
-- **Retry:** Khi consumer xử lý message thất bại, message sẽ được chuyển sang một hàng đợi retry (có thể là topic Kafka/stream Redis riêng). Mỗi lần retry sẽ có delay tăng dần (configurable). Số lần retry tối đa có thể cấu hình.
-- **DLQ (Dead Letter Queue):** Nếu message vẫn lỗi sau số lần retry tối đa, nó sẽ được chuyển sang Dead Letter Queue. Bạn có thể monitor, phân tích, hoặc xử lý thủ công các message này.
+- **What:** It provides unified producer and consumer interfaces with automatic retry and dead-letter queue (DLQ) support, working seamlessly with both Kafka and Redis backends.
+- **Why:** Message loss, transient errors, and operational hiccups are common in distributed systems. retry-kafka ensures your messages are never lost, giving you fine-grained control over retries, error handling, and observability. It empowers you to build resilient, production-grade pipelines with minimal effort.
+- **How:** Just define your event type, plug in your backend of choice, and configure retry policies as needed. retry-kafka handles message delivery, retries with backoff, DLQ routing, and serialization for you—so you can focus on your business logic, not infrastructure plumbing.
 
-### Luồng xử lý
+## Retry & Dead Letter Queue (DLQ) Architecture
+
+The system uses **retry** and **DLQ** mechanisms to ensure no data loss and increased reliability:
+
+- **Retry:** When a consumer fails to process a message, the message is moved to a retry queue (which can be a separate Kafka topic or Redis stream). Each retry attempt has an increasing delay (configurable). The maximum number of retries is also configurable.
+- **DLQ (Dead Letter Queue):** If the message still fails after the maximum number of retries, it is moved to the Dead Letter Queue. You can monitor, analyze, or manually process these messages.
+
+### Processing Flow
 ```
 Producer --> [Main Queue] --> Consumer
                           |--> Retry Queue(s) --> Consumer
                           |--> DLQ
 ```
 
-- **Main Queue:** Topic/stream chính nhận message mới.
-- **Retry Queue(s):** Có thể có nhiều hàng đợi retry với các mức delay khác nhau (ví dụ: 10s, 1m, 5m...).
-- **DLQ:** Lưu trữ các message không thể xử lý thành công.
+- **Main Queue:** The main topic/stream that receives new messages.
+- **Retry Queue(s):** There can be multiple retry queues with different delay levels (e.g., 10s, 1m, 5m...).
+- **DLQ:** Stores messages that could not be successfully processed.
 
-### Ưu điểm
-- Không mất dữ liệu tạm thởi do lỗi hệ thống/người dùng.
-- Có thể phân tích nguyên nhân lỗi qua DLQ.
-- Linh hoạt cấu hình số lần và thời gian retry.
+### Advantages
+- No temporary data loss due to system/user errors.
+- Can analyze error causes via DLQ.
+- Flexible configuration for number of retries and retry intervals.
 
-Hệ thống này cung cấp cơ chế gửi và xử lý message với khả năng retry, hỗ trợ cả hai backend: **Kafka** và **Redis**.
+This system provides a message sending and processing mechanism with retry capability, supporting both **Kafka** and **Redis** backends.
 
-## Mục đích
+## Purpose
 
-- Đảm bảo message không bị mất khi gặp lỗi tạm thởi.
-- Hỗ trợ cả Redis và Kafka để linh hoạt theo nhu cầu hệ thống.
-- Dễ dàng mở rộng, tích hợp.
+- Ensure messages are not lost in case of temporary errors.
+- Support both Redis and Kafka for system flexibility.
+- Easy to extend and integrate.
 
-## Kiến trúc tổng quan
+## Overview Architecture
 
 ```
-[Producer] --(Kafka/Redis)--> [Consumer] --(Xử lý/Retry/DQL)-->
+[Producer] --(Kafka/Redis)--> [Consumer] --(Processing/Retry/DLQ)-->
 ```
 
-- **Producer**: Gửi message vào Kafka hoặc Redis.
-- **Consumer**: Nhận message, xử lý, retry nếu lỗi, gửi vào Dead Queue nếu không thể xử lý.
+- **Producer**: Sends messages to Kafka or Redis.
+- **Consumer**: Receives messages, processes them, retries on error, and sends to Dead Queue if unprocessable.
 
-## Hướng dẫn sử dụng nhanh
+## Quick Start Guide
 
-### 1. Định nghĩa Event
+### 1. Define Event
 
 ```go
 type MyEvent struct {
@@ -63,17 +71,11 @@ import (
 )
 
 // Kafka
-producer := kafka.NewProducer(kafka.Config{
-    Brokers: []string{"localhost:9092"},
-    Topic:   "my-topic",
-})
+producer := kafka.NewProducer(&MyEvent{}, []string{"localhost:9092"})
 err := producer.SendMessage(MyEvent{ID: 1, Name: "foo"})
 
 // Redis
-producer := redis.NewProducer(redis.Config{
-    Addr:  "localhost:6379",
-    Topic: "my-redis-stream",
-})
+producer := redis.NewProducer(&MyEvent{}, []string{"localhost:6379"})
 err := producer.SendMessage(MyEvent{ID: 2, Name: "bar"})
 ```
 
@@ -87,45 +89,71 @@ import (
 )
 
 // Kafka
-consumer := kafka.NewConsumer(kafka.Config{
-    Brokers: []string{"localhost:9092"},
-    Topic:   "my-topic",
-    GroupID: "my-group",
-})
+consumer := kafka.NewConsumer("my-group", &MyEvent{}, []string{"localhost:9092"})
 err := consumer.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
     myEvt := evt.(*MyEvent)
-    // Xử lý logic ở đây
-    return nil // hoặc return error để retry
+    // Business logic here
+    return nil // or return error to retry
 })
 
 // Redis
-consumer := redis.NewConsumer(redis.Config{
-    Addr:  "localhost:6379",
-    Topic: "my-redis-stream",
-})
+consumer := redis.NewConsumer("my-group", &MyEvent{}, []string{"localhost:6379"})
 err := consumer.Consume(context.Background(), func(evt retriable.Event, headers []*retriable.Header) error {
     myEvt := evt.(*MyEvent)
-    // Xử lý logic ở đây
+    // Business logic here
     return nil
 })
 ```
 
-### 4. Batch Consume (nếu muốn)
+### 4. Batch Consume (optional)
 
 ```go
 err := consumer.BatchConsume(context.Background(), func(evts []retriable.Event, headers [][]*retriable.Header) error {
     for _, evt := range evts {
         myEvt := evt.(*MyEvent)
-        // Xử lý từng event
+        // Process each event
     }
     return nil
 })
 ```
 
-### 5. Sử dụng WithMarshaller cho Producer & Consumer (tuỳ chọn)
+### 5. Using With... Options for Producer & Consumer (optional)
 
-Bạn có thể truyền custom marshaller (ví dụ: JSON, protobuf,...) khi khởi tạo Producer hoặc Consumer để tuỳ biến serialization/deserialization. Ví dụ với Kafka:
+You can provide custom configuration options (such as marshaller, async, partition, etc.) when initializing the Producer or Consumer. Below are common `With...` options for each type:
 
+#### Producer Options
+- **Kafka**
+  - `kafka.WithMarshaller(marshaller.Marshaller)`: Specify a custom marshaller (e.g., JSON, protobuf).
+  - `kafka.WithAsync()`: Enable async publishing to Kafka.
+- **Redis**
+  - `redis.WithMarshaller(marshaller.Marshaller)`: Specify a custom marshaller.
+  - `redis.WithPartitionNum(num int32)`: Set the partition number for Redis streams.
+
+#### Consumer Options
+- **Kafka**
+  - `kafka.WithMarshaller(marshaller.Marshaller)`: Specify a custom marshaller.
+  - `kafka.WithBatchFlush(size int32, timeFlush time.Duration)`: Control batch flush size and interval.
+  - `kafka.WithRetries(opts []consumer.RetryOption)`: Custom retry options.
+  - `kafka.WithMessageBytes(bytes int32)`: Limit memory usage per message.
+  - `kafka.WithMaxProcessDuration(duration time.Duration)`: Set max processing time per message.
+  - `kafka.WithBalanceStrategy(strategy)`: Set consumer group balancing strategy.
+  - `kafka.WithSessionTimeout(duration time.Duration)`: Set session timeout.
+  - `kafka.WithHeartbeatInterval(duration time.Duration)`: Set heartbeat interval.
+  - `kafka.WithKafkaVersion(version string)`: Specify Kafka version.
+  - `kafka.WithLongProcessing(isLongProcessing bool)`: Enable long processing mode.
+  - `kafka.WithLogger(logger Logger)`: Set custom logger.
+  - `kafka.WithEnableRetry(enable bool)`: Enable/disable retry.
+  - `kafka.WithEnableDlq(enable bool)`: Enable/disable DLQ.
+- **Redis**
+  - `redis.WithMarshaller(marshaller.Marshaller)`: Specify a custom marshaller.
+  - `redis.WithRetries(opts []consumer.RetryOption)`: Custom retry options.
+  - `redis.WithLogger(logger Logger)`: Set custom logger.
+  - `redis.WithMaxProcessDuration(duration time.Duration)`: Set max processing time per message.
+  - `redis.WithEnableRetry(enable bool)`: Enable/disable retry.
+  - `redis.WithEnableDlq(enable bool)`: Enable/disable DLQ.
+  - `redis.WithUnOrder(unOrder bool)`: Enable unordered (M:N) subscribe mode.
+
+#### Example: Custom Marshaller
 ```go
 import (
     "github.com/tuanuet/retry-kafka/producer/kafka"
@@ -134,28 +162,31 @@ import (
 )
 
 producer := kafka.NewProducer(
-    kafka.Config{...},
+    &MyEvent{},
+    []string{"localhost:9092"},
     kafka.WithMarshaller(marshaller.NewJSONMarshaller()),
 )
 
 consumer := kafka.NewConsumer(
-    kafka.Config{...},
+    "my-group",
+    &MyEvent{},
+    []string{"localhost:9092"},
     kafka.WithMarshaller(marshaller.NewJSONMarshaller()),
 )
 ```
 
-> **Lưu ý:** Redis cũng hỗ trợ WithMarshaller với cách dùng tương tự.
-> Nên dùng cùng loại marshaller cho cả Producer và Consumer để tránh lỗi giải mã dữ liệu.
+> **Note:** Redis also supports `WithMarshaller` and other options similarly.
+> You should use the same marshaller type for both Producer and Consumer to avoid data decoding errors.
 
-## Khi nào nên dùng Redis, khi nào dùng Kafka?
+## When to use Redis, when to use Kafka?
 
-- **Kafka**: Sử dụng khi cần throughput lớn, đảm bảo thứ tự, phân tán cao, lưu trữ lâu dài.
-- **Redis**: Phù hợp cho các hệ thống nhỏ, latency thấp, hoặc khi bạn đã có Redis sẵn.
+- **Kafka:** Use when you need high throughput, guaranteed ordering, high distribution, and long-term storage.
+- **Redis:** Suitable for small systems, low latency, or if you already have Redis available.
 
-## Đóng góp & mở rộng
+## Contribution & Extension
 
-- Fork repo, tạo PR hoặc issue nếu bạn muốn đóng góp.
-- Hỗ trợ thêm backend khác dễ dàng nhờ kiến trúc interface.
+- Fork the repo, create a PR or issue if you want to contribute.
+- Adding new backends is easy thanks to the interface-based architecture.
 
 ## ChangeLog
 - [2025-04-16] Support redis-stream from version 2.0.0
