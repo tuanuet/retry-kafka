@@ -190,3 +190,13 @@ consumer := kafka.NewConsumer(
 
 ## ChangeLog
 - [2025-04-16] Support redis-stream from version 2.0.0
+
+## Sponsor
+
+If you find **retry-kafka** helpful and want to support its ongoing development, please consider becoming a sponsor! Your sponsorship helps me dedicate more time to improving the library, adding new features, and providing better documentation and support for the community.
+
+- ⭐ Star the repo to show your support!
+- 💬 Share feedback, ideas, or feature requests via issues or discussions.
+- 🤝 Interested in sponsoring or partnering? Reach out via [GitHub Sponsors](https://github.com/sponsors/tuanuet) or email me directly.
+
+Thank you for helping make open source better for everyone!
