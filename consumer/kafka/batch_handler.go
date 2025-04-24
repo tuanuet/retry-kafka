@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/consumer"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/consumer"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 )
 
 // kafkaSubscriberBatchHandler is the struct of handler.

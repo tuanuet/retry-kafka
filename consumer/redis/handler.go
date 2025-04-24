@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/tuanuet/retry-kafka/consumer"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/consumer"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 )
 
 // redisSubscriberHandler is the struct of handler.

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"github.com/tuanuet/retry-kafka/consumer"
-	"github.com/tuanuet/retry-kafka/marshaller"
-	"github.com/tuanuet/retry-kafka/producer"
-	redisp "github.com/tuanuet/retry-kafka/producer/redis"
+	"github.com/tuanuet/retry-kafka/v2/consumer"
+	"github.com/tuanuet/retry-kafka/v2/marshaller"
+	"github.com/tuanuet/retry-kafka/v2/producer"
+	redisp "github.com/tuanuet/retry-kafka/v2/producer/redis"
 	"log"
 	"reflect"
 	"strings"
@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 )
 
 // Option ...

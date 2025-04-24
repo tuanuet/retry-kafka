@@ -7,7 +7,7 @@ import (
 
 	"github.com/IBM/sarama"
 
-	"github.com/tuanuet/retry-kafka/marshaller"
+	"github.com/tuanuet/retry-kafka/v2/marshaller"
 )
 
 type KafkaMessage struct {

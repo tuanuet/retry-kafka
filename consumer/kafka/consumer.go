@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tuanuet/retry-kafka/consumer"
-	"github.com/tuanuet/retry-kafka/marshaller"
-	"github.com/tuanuet/retry-kafka/producer"
-	"github.com/tuanuet/retry-kafka/producer/kafka"
+	"github.com/tuanuet/retry-kafka/v2/consumer"
+	"github.com/tuanuet/retry-kafka/v2/marshaller"
+	"github.com/tuanuet/retry-kafka/v2/producer"
+	"github.com/tuanuet/retry-kafka/v2/producer/kafka"
 	"log"
 	"reflect"
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 )
 
 // Option ...

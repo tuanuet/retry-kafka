@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/marshaller"
+	"github.com/tuanuet/retry-kafka/v2/marshaller"
 )
 
 func getTestKafkaMessage() *sarama.ConsumerMessage {
 	return &sarama.ConsumerMessage{
-		Topic:     "test-topic",
-		Value:     []byte("{\"foo\":\"bar\"}"),
+		Topic: "test-topic",
+		Value: []byte("{\"foo\":\"bar\"}"),
 		Headers: []*sarama.RecordHeader{
 			{Key: []byte("k1"), Value: []byte("v1")},
 			{Key: []byte("k2"), Value: []byte("v2")},

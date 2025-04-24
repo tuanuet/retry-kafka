@@ -2,7 +2,7 @@ package retriable
 
 import (
 	"github.com/redis/go-redis/v9"
-	"github.com/tuanuet/retry-kafka/marshaller"
+	"github.com/tuanuet/retry-kafka/v2/marshaller"
 	"reflect"
 	"testing"
 )

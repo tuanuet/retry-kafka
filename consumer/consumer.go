@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 )
 
 // RetryOption is the option for retry topic.

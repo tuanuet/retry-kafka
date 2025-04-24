@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	redisp "github.com/tuanuet/retry-kafka/producer/redis"
-	"github.com/tuanuet/retry-kafka/retriable"
+	redisp "github.com/tuanuet/retry-kafka/v2/producer/redis"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 	_ "net/http/pprof"
 )
 

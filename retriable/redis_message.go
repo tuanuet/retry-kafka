@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tuanuet/retry-kafka/marshaller"
+	"github.com/tuanuet/retry-kafka/v2/marshaller"
 )
 
 type RMessage struct {

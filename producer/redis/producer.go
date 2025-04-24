@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/cespare/xxhash"
-	"github.com/tuanuet/retry-kafka/marshaller"
-	"github.com/tuanuet/retry-kafka/producer"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/marshaller"
+	"github.com/tuanuet/retry-kafka/v2/producer"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 )
 
 // Option ...

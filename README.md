@@ -66,8 +66,8 @@ func (e MyEvent) GetPartitionValue() string   { return fmt.Sprintf("%d", e.ID) }
 
 ```go
 import (
-    "github.com/tuanuet/retry-kafka/producer/kafka"
-    "github.com/tuanuet/retry-kafka/producer/redis"
+    "github.com/tuanuet/retry-kafka/v2/producer/kafka"
+    "github.com/tuanuet/retry-kafka/v2/producer/redis"
 )
 
 // Kafka
@@ -84,8 +84,8 @@ err := producer.SendMessage(MyEvent{ID: 2, Name: "bar"})
 ```go
 import (
     "context"
-    "github.com/tuanuet/retry-kafka/consumer/kafka"
-    "github.com/tuanuet/retry-kafka/consumer/redis"
+    "github.com/tuanuet/retry-kafka/v2/consumer/kafka"
+    "github.com/tuanuet/retry-kafka/v2/consumer/redis"
 )
 
 // Kafka
@@ -156,9 +156,9 @@ You can provide custom configuration options (such as marshaller, async, partiti
 #### Example: Custom Marshaller
 ```go
 import (
-    "github.com/tuanuet/retry-kafka/producer/kafka"
-    "github.com/tuanuet/retry-kafka/consumer/kafka"
-    "github.com/tuanuet/retry-kafka/marshaller"
+    "github.com/tuanuet/retry-kafka/v2/producer/kafka"
+    "github.com/tuanuet/retry-kafka/v2/consumer/kafka"
+    "github.com/tuanuet/retry-kafka/v2/marshaller"
 )
 
 producer := kafka.NewProducer(

@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/tuanuet/retry-kafka/consumer/redis"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/consumer/redis"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 	"log"
 	_ "net/http/pprof"
 	"os"

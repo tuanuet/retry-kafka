@@ -1,6 +1,6 @@
 package producer
 
-import "github.com/tuanuet/retry-kafka/retriable"
+import "github.com/tuanuet/retry-kafka/v2/retriable"
 
 type Producer interface {
 	SendMessage(event retriable.Event, headers []*retriable.Header, opts ...SendOption) error

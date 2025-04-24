@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/tuanuet/retry-kafka/retriable"
+	"github.com/tuanuet/retry-kafka/v2/retriable"
 )
 
 type config struct {
