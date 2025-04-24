@@ -1,4 +1,4 @@
-module github.com/tuanuet/retry-kafka
+module github.com/tuanuet/retry-kafka/v2
 
 go 1.20
 
