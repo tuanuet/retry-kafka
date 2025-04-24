@@ -48,6 +48,32 @@ This system provides a message sending and processing mechanism with retry capab
 - **Producer**: Sends messages to Kafka or Redis.
 - **Consumer**: Receives messages, processes them, retries on error, and sends to Dead Queue if unprocessable.
 
+## Install v2
+
+You can install retry-kafka v2 using Go modules:
+
+```bash
+go get github.com/tuanuet/retry-kafka/v2
+```
+
+Make sure your `go.mod` contains the following import:
+
+```
+module github.com/your/project
+
+go 1.20
+
+require (
+    github.com/tuanuet/retry-kafka/v2 latest
+)
+```
+
+Then import it in your code:
+
+```go
+import "github.com/tuanuet/retry-kafka/v2"
+```
+
 ## Quick Start Guide
 
 ### 1. Define Event
