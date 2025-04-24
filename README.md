@@ -91,6 +91,7 @@ func (e MyEvent) GetPartitionValue() string   { return fmt.Sprintf("%d", e.ID) }
 ### 2. Producer (Kafka/Redis)
 
 ```go
+package yourpackage
 import (
     "github.com/tuanuet/retry-kafka/v2/producer/kafka"
     "github.com/tuanuet/retry-kafka/v2/producer/redis"
@@ -98,18 +99,19 @@ import (
 
 // Kafka
 producer := kafka.NewProducer(&MyEvent{}, []string{"localhost:9092"})
-err := producer.SendMessage(MyEvent{ID: 1, Name: "foo"})
+err := producer.SendMessage(&MyEvent{ID: 1, Name: "foo"}, nil)
 
 // Redis
 producer := redis.NewProducer(&MyEvent{}, []string{"localhost:6379"})
-err := producer.SendMessage(MyEvent{ID: 2, Name: "bar"})
+err := producer.SendMessage(&MyEvent{ID: 2, Name: "bar"}, nil)
 ```
 
 ### 3. Consumer (Kafka/Redis)
 
 ```go
+package yourpackage
+
 import (
-    "context"
     "github.com/tuanuet/retry-kafka/v2/consumer/kafka"
     "github.com/tuanuet/retry-kafka/v2/consumer/redis"
 )
